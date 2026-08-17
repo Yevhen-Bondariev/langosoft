@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: #020617;
+  color: #f1f5f9;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Word tokens ──────────────────────────────────────────────────────────── */
+.word-token {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 2px;
+  transition: background-color 0.1s ease;
+}
+
+.word-token:hover {
+  background-color: rgba(245, 158, 11, 0.2);
+}
+
+.word-current {
+  background-color: #f59e0b;
+  color: #020617;
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(245,158,11,0.3);
+}
+
+.word-search-match {
+  background-color: rgba(59, 130, 246, 0.35);
+  border-radius: 3px;
+}
+
+.word-search-selected {
+  background-color: #3b82f6;
+  color: white;
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 600;
+}
+
+.word-has-hint {
+  border-bottom: 2px dotted rgba(245, 158, 11, 0.6);
+}
+
+.word-has-hint:hover {
+  background-color: rgba(245, 158, 11, 0.12);
+}
+
+/* ── Focus states ─────────────────────────────────────────────────────────── */
+:focus { outline: none; }
+:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; border-radius: 3px; }
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ── Utilities ────────────────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0;
+  margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+/* ── Glass card ───────────────────────────────────────────────────────────── */
+.glass-card {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
