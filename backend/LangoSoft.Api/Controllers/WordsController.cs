@@ -20,4 +20,29 @@ public class WordsController(WordService wordService) : ControllerBase
         var (translation, synonym) = await wordService.TranslateAsync(req.Word, req.Context ?? "", lang);
         return Ok(new TranslateResponse(translation, synonym));
     }
+
+    public record TranslateParagraphRequest(string Text, string? TargetLanguage);
+    public record TranslateParagraphResponse(string Translation);
+
+    [HttpPost("translate-paragraph")]
+    public async Task<ActionResult<TranslateParagraphResponse>> TranslateParagraph([FromBody] TranslateParagraphRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Text))
+            return BadRequest("text is required");
+        var lang = string.IsNullOrWhiteSpace(req.TargetLanguage) ? "Ukrainian" : req.TargetLanguage;
+        var translation = await wordService.TranslateParagraphAsync(req.Text, lang);
+        return Ok(new TranslateParagraphResponse(translation));
+    }
+
+    public record RecallExplainRequest(string Original, string? Typed);
+    public record RecallExplainResponse(string Explanation);
+
+    [HttpPost("recall-explain")]
+    public async Task<ActionResult<RecallExplainResponse>> RecallExplain([FromBody] RecallExplainRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Original))
+            return BadRequest("original is required");
+        var explanation = await wordService.ExplainRecallAsync(req.Original, req.Typed ?? "");
+        return Ok(new RecallExplainResponse(explanation));
+    }
 }

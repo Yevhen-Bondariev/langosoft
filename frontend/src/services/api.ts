@@ -55,6 +55,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ word, context, targetLanguage }),
       }),
+    recallExplain: (original: string, typed: string) =>
+      req<{ explanation: string }>('/words/recall-explain', {
+        method: 'POST',
+        body: JSON.stringify({ original, typed }),
+      }),
+    translateParagraph: (text: string, targetLanguage: string) =>
+      req<{ translation: string }>('/words/translate-paragraph', {
+        method: 'POST',
+        body: JSON.stringify({ text, targetLanguage }),
+      }),
   },
   grammar: {
     analyze: (text: string) =>

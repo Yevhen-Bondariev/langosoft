@@ -6,5 +6,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     base: env.VITE_BASE || '/',
+    test: {
+      environment: 'jsdom',
+      globals: true,
+    },
   }
 })

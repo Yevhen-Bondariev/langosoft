@@ -1,11 +1,123 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Book, Chapter, Paragraph, WordToken } from '../types';
+import type { Book, Chapter, Paragraph } from '../types';
 import { api } from '../services/api';
 import { tokenizeParagraph, getWordTokens } from '../utils/tokenize';
 import { useTTS } from '../hooks/useTTS';
 import { phonemeHints, type PhonemeHint } from '../utils/phonemes';
 import type { LanguageOption } from '../hooks/useLanguagePreference';
 import { grammarRules } from '../utils/grammarRules';
+import { sentenceAtWord, wordDiff, recallScore, type DiffSegment } from '../utils/recall';
+
+function playTone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.25) {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    osc.start(); osc.stop(ctx.currentTime + dur);
+  } catch { /* ignore */ }
+}
+function playSuccess() {
+  playTone(523, 0.08); setTimeout(() => playTone(659, 0.08), 90); setTimeout(() => playTone(784, 0.18), 180);
+}
+function playFailure() {
+  playTone(220, 0.15, 'sawtooth', 0.2); setTimeout(() => playTone(196, 0.2, 'sawtooth', 0.15), 160);
+}
+
+function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain, onHear, onHearTranslation, onClose }: {
+  diff: DiffSegment[];
+  explanation: string | null;
+  explainLoading: boolean;
+  onRetry: () => void;
+  onExplain: () => void;
+  onHear: () => void;
+  onHearTranslation?: () => void;
+  onClose: () => void;
+}) {
+  const { correct, total, missing } = recallScore(diff);
+  return (
+    <div className="space-y-3">
+      <div
+        className={`px-3 py-2 rounded-lg text-sm font-semibold ${correct === total ? 'bg-green-900/40 text-green-300' : 'bg-slate-700 text-slate-200'}`}
+        role="status"
+        aria-live="polite"
+        aria-label={correct === total
+          ? 'Perfect! All words correct.'
+          : `Score: ${correct} out of ${total} words correct.${missing.length ? ` Missing: ${missing.join(', ')}.` : ''}`}
+      >
+        {correct === total
+          ? 'Perfect!'
+          : `${correct} / ${total} words correct${missing.length ? ` — missing: ${missing.join(', ')}` : ''}`}
+      </div>
+
+      <div className="bg-slate-900/60 rounded-lg px-4 py-3 text-base leading-loose">
+        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Comparison</p>
+        {diff.map((seg, idx) => (
+          <span
+            key={idx}
+            className={
+              seg.kind === 'match'   ? 'text-slate-200' :
+              seg.kind === 'missing' ? 'text-red-400 line-through decoration-red-600 font-medium' :
+                                       'text-amber-400 italic'
+            }
+            aria-label={
+              seg.kind === 'match'   ? seg.text :
+              seg.kind === 'missing' ? `${seg.text} (you missed this)` :
+                                       `${seg.text} (extra word)`
+            }
+          >
+            {seg.text}{' '}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex gap-4 text-xs text-slate-500">
+        <span><span className="text-slate-300">word</span> = correct</span>
+        <span><span className="text-red-400 line-through">word</span> = missed</span>
+        <span><span className="text-amber-400 italic">word</span> = extra</span>
+      </div>
+
+      {explanation ? (
+        <div className="bg-indigo-950/50 border border-indigo-800/40 rounded-lg px-4 py-3" role="region" aria-label="Grammar explanation">
+          <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-2">Explanation</p>
+          <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">{explanation}</p>
+        </div>
+      ) : explainLoading ? (
+        <p className="text-indigo-400 text-sm animate-pulse" aria-live="polite">Generating explanation…</p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button onClick={onRetry}
+          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-medium transition-colors">
+          Retry (r)
+        </button>
+        {!explanation && !explainLoading && (
+          <button onClick={onExplain}
+            className="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 rounded text-xs font-medium transition-colors">
+            Explain differences (e)
+          </button>
+        )}
+        <button onClick={onHear}
+          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-medium transition-colors">
+          Hear English (8)
+        </button>
+        {onHearTranslation && (
+          <button onClick={onHearTranslation}
+            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-medium transition-colors">
+            Hear translation (t)
+          </button>
+        )}
+        <button onClick={onClose}
+          className="ml-auto text-slate-600 hover:text-slate-400 text-xs transition-colors">
+          Close (Esc)
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   book: Book;
@@ -16,6 +128,7 @@ interface Props {
   showPhonemeHints: boolean;
   selectedVoice?: SpeechSynthesisVoice | null;
   selectedLang: LanguageOption;
+  ttsRate?: number;
 }
 
 interface AddFlashcardState {
@@ -26,7 +139,7 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, showPhonemeHints, selectedVoice, selectedLang }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9 }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -39,20 +152,36 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [addTranslation, setAddTranslation] = useState('');
   const [addSynonym, setAddSynonym] = useState('');
   const [addLoading, setAddLoading] = useState(false);
+  const [addTranslationError, setAddTranslationError] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [progressLoaded, setProgressLoaded] = useState(false);
-  const [tokens, setTokens] = useState<WordToken[]>([]);
   const [currentHint, setCurrentHint] = useState<PhonemeHint | null>(null);
   const [grammarTenses, setGrammarTenses] = useState<string[] | null>(null);
   const [grammarLoading, setGrammarLoading] = useState(false);
   const [selectedTense, setSelectedTense] = useState<string | null>(null);
   const grammarCache = useRef<Map<number, string[]>>(new Map());
 
+  const [recallMode, setRecallMode] = useState(false);
+  const [recallSentence, setRecallSentence] = useState('');
+  const [recallInput, setRecallInput] = useState('');
+  const [recallDiff, setRecallDiff] = useState<DiffSegment[] | null>(null);
+  const [recallExplanation, setRecallExplanation] = useState<string | null>(null);
+  const [recallExplainLoading, setRecallExplainLoading] = useState(false);
+  const recallTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [translationText, setTranslationText] = useState('');
+  const [translationLoading, setTranslationLoading] = useState(false);
+  const translationCache = useRef<Map<number, string>>(new Map());
+
+  // Pre-tokenize all paragraphs once when the chapter loads (not on every keystroke)
+  const allTokens = useMemo(() => paragraphs.map(p => tokenizeParagraph(p.text)), [paragraphs]);
+  const tokens = allTokens[currentParagraphIndex] ?? [];
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const translationInputRef = useRef<HTMLInputElement>(null);
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { speak, speakChain, stop } = useTTS(selectedVoice);
+  const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate);
 
   // Load progress on mount
   useEffect(() => {
@@ -70,18 +199,14 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   // Load paragraphs when chapter changes
   useEffect(() => {
     if (!progressLoaded) return;
+    let cancelled = false;
     setIsLoading(true);
     api.books.paragraphs(book.id, chapterNum)
-      .then(paras => setParagraphs(paras))
-      .catch(() => setParagraphs([]))
-      .finally(() => setIsLoading(false));
+      .then(paras => { if (!cancelled) setParagraphs(paras); })
+      .catch(() => { if (!cancelled) setParagraphs([]); })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, [book.id, chapterNum, progressLoaded]);
-
-  // Tokenize current paragraph
-  useEffect(() => {
-    const para = paragraphs[currentParagraphIndex];
-    if (para) setTokens(tokenizeParagraph(para.text));
-  }, [paragraphs, currentParagraphIndex]);
 
   // Reset letter index when word changes
   useEffect(() => {
@@ -104,6 +229,33 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   useEffect(() => {
     currentParaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [currentParagraphIndex]);
+
+  // Clear translation cache when chapter or language changes
+  useEffect(() => {
+    translationCache.current.clear();
+    setTranslationText('');
+  }, [chapterNum, selectedLang.name]);
+
+  // Fetch translation of current paragraph (debounced 600ms so fast navigation doesn't spam Groq)
+  useEffect(() => {
+    const para = paragraphs[currentParagraphIndex];
+    if (!para) return;
+
+    const cached = translationCache.current.get(currentParagraphIndex);
+    if (cached !== undefined) { setTranslationText(cached); return; }
+
+    let cancelled = false;
+    setTranslationText('');
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setTranslationLoading(true);
+      api.words.translateParagraph(para.text, selectedLang.name)
+        .then(r => { if (!cancelled) { translationCache.current.set(currentParagraphIndex, r.translation); setTranslationText(r.translation); } })
+        .catch(() => { if (!cancelled) translationCache.current.set(currentParagraphIndex, ''); })
+        .finally(() => { if (!cancelled) setTranslationLoading(false); });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [currentParagraphIndex, paragraphs, selectedLang.name]);
 
   const wordTokens = getWordTokens(tokens);
   const totalChapters = chapters.length;
@@ -192,6 +344,64 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     }
   }, [grammarTenses, paragraphs, currentParagraphIndex]);
 
+  const enterRecall = useCallback(() => {
+    const para = paragraphs[currentParagraphIndex];
+    if (!para) return;
+    const sentence = sentenceAtWord(para.text, currentWordIndex);
+    if (!sentence) return;
+    setRecallSentence(sentence);
+    setRecallInput('');
+    setRecallDiff(null);
+    setRecallExplanation(null);
+    setRecallMode(true);
+    setTimeout(() => recallTextareaRef.current?.focus(), 50);
+  }, [paragraphs, currentParagraphIndex, currentWordIndex]);
+
+  const submitRecall = useCallback(() => {
+    if (!recallInput.trim()) return;
+    const diff = wordDiff(recallSentence, recallInput);
+    setRecallDiff(diff);
+    const { correct, total, missing } = recallScore(diff);
+    const extra = diff.filter(s => s.kind === 'extra').map(s => s.text);
+    if (correct === total) {
+      playSuccess();
+      setTimeout(() => speak('Correct!'), 350);
+    } else {
+      playFailure();
+      const parts: string[] = [];
+      if (missing.length) parts.push(`Missing: ${missing.join(', ')}.`);
+      if (extra.length) parts.push(`Wrong: ${extra.join(', ')}.`);
+      setTimeout(() => speak(parts.join(' ')), 400);
+    }
+  }, [recallSentence, recallInput, speak]);
+
+  const retryRecall = useCallback(() => {
+    setRecallDiff(null);
+    setRecallExplanation(null);
+    setRecallInput('');
+    setTimeout(() => recallTextareaRef.current?.focus(), 50);
+  }, []);
+
+  const explainRecall = useCallback(async () => {
+    if (recallExplanation || recallExplainLoading) return;
+    setRecallExplainLoading(true);
+    try {
+      const res = await api.words.recallExplain(recallSentence, recallInput);
+      setRecallExplanation(res.explanation || '(no explanation available)');
+    } catch {
+      setRecallExplanation('(explanation unavailable — check API key)');
+    } finally {
+      setRecallExplainLoading(false);
+    }
+  }, [recallExplanation, recallExplainLoading, recallSentence, recallInput]);
+
+  const readCurrentLine = useCallback(() => {
+    const para = paragraphs[currentParagraphIndex];
+    if (!para) return;
+    const sentence = sentenceAtWord(para.text, currentWordIndex);
+    speak(sentence || para.text);
+  }, [paragraphs, currentParagraphIndex, currentWordIndex, speak]);
+
   const readCurrentParagraph = useCallback(() => {
     const para = paragraphs[currentParagraphIndex];
     if (para) speak(para.text);
@@ -207,6 +417,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     setAddState({ word, context, wordIndex: idx, paragraphIndex: currentParagraphIndex, chapterNumber: chapterNum });
     setAddTranslation('');
     setAddSynonym('');
+    setAddTranslationError(false);
 
     // Speak the word immediately
     speak(word);
@@ -219,14 +430,17 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
         const synonym = d.synonym ?? '';
         setAddTranslation(translation);
         setAddSynonym(synonym);
-        // Read: word (EN) → translation (target lang) → synonym (EN)
-        speakChain([
-          { text: word },
-          { text: translation, lang: selectedLang.code },
-          { text: synonym },
-        ]);
+        if (translation || synonym) {
+          speakChain([
+            { text: word },
+            { text: translation, lang: selectedLang.code },
+            { text: synonym },
+          ]);
+        }
       })
-      .catch(() => {})
+      .catch(() => {
+        setAddTranslationError(true);
+      })
       .finally(() => setAddLoading(false));
 
     setTimeout(() => translationInputRef.current?.focus(), 50);
@@ -267,6 +481,29 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
+      // Input mode captures all keys
+      if (recallMode) {
+        // ← exits input mode (only when not typing in textarea)
+        if (e.key === 'ArrowLeft' && !inInput) {
+          setRecallMode(false); setRecallDiff(null); setRecallInput('');
+          e.preventDefault(); return;
+        }
+        // 8 = hear Ukrainian translation
+        if ((e.key === '8' || e.code === 'Numpad8') && !inInput) {
+          if (translationText) speak(translationText, { lang: selectedLang.code });
+          e.preventDefault(); return;
+        }
+        // Enter after result = retry
+        if (e.key === 'Enter' && !inInput && recallDiff !== null) {
+          retryRecall(); e.preventDefault(); return;
+        }
+        // e after result = explain
+        if ((e.key === 'e' || e.key === 'E') && !inInput && recallDiff !== null) {
+          explainRecall(); e.preventDefault(); return;
+        }
+        return;
+      }
 
       // Add flashcard modal shortcuts
       if (addState) {
@@ -381,10 +618,10 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
         goToParagraph(currentParagraphIndex - 1, true);
         return;
       }
-      // ── 8 / Numpad8 ── current line (paragraph)
+      // ── 8 / Numpad8 ── current sentence (line)
       if (key === '8' || code === 'Numpad8') {
         e.preventDefault();
-        readCurrentParagraph();
+        readCurrentLine();
         return;
       }
       // ── 9 / Numpad9 ── next line (paragraph)
@@ -426,6 +663,18 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
         analyzeGrammar();
         return;
       }
+      // ── → ── enter input mode
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        enterRecall();
+        return;
+      }
+      // ── r / R ── enter input mode (alias)
+      if (key === 'r' || key === 'R') {
+        e.preventDefault();
+        enterRecall();
+        return;
+      }
     };
 
     window.addEventListener('keydown', handler);
@@ -434,13 +683,15 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     addState, searchMode, searchMatches, clampedSearchIdx,
     currentWordIndex, currentLetterIndex, currentParagraphIndex, paragraphs,
     wordTokens, chapterNum, showPhonemeHints,
-    readCurrentParagraph, goToWord, goToParagraph, goToChapter,
-    openAddFlashcard, submitFlashcard, speak, speakChain, stop, analyzeGrammar,
+    readCurrentLine, goToWord, goToParagraph, goToChapter,
+    openAddFlashcard, submitFlashcard, speak, stop, analyzeGrammar,
+    recallMode, recallDiff, translationText, selectedLang.code,
+    retryRecall, explainRecall, enterRecall,
   ]);
 
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
     const isCurrent = paraIdx === currentParagraphIndex;
-    const paraTokens = isCurrent ? tokens : tokenizeParagraph(para.text);
+    const paraTokens = allTokens[paraIdx] ?? [];
 
     return (
       <div
@@ -643,29 +894,104 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       )}
 
       {/* Book content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {isLoading ? (
-          <div className="text-slate-500 text-center py-8">Loading...</div>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        {recallMode ? (
+          /* Input mode — replaces the reading pane */
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1.25rem', gap: '1rem' }}>
+            {/* Ukrainian hint at top */}
+            <div style={{ background: '#1e293b', borderRadius: '0.5rem', padding: '1rem', flexShrink: 0 }}>
+              <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                {selectedLang.label} — press 8 to hear
+              </p>
+              {translationLoading ? (
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Translating…</p>
+              ) : translationText ? (
+                <p style={{ color: '#e2e8f0', fontSize: '1.1rem', lineHeight: 1.75 }} aria-live="polite">{translationText}</p>
+              ) : (
+                <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Translation unavailable</p>
+              )}
+            </div>
+
+            {recallDiff === null ? (
+              /* Typing area */
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '0.75rem' }}>
+                <label style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }} htmlFor="recall-input">
+                  Type the English text from memory
+                </label>
+                <textarea
+                  id="recall-input"
+                  ref={recallTextareaRef}
+                  value={recallInput}
+                  onChange={e => setRecallInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitRecall(); }
+                    if (e.key === '8') { e.preventDefault(); if (translationText) speak(translationText, { lang: selectedLang.code }); }
+                  }}
+                  rows={5}
+                  placeholder="Type from memory…"
+                  style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '0.5rem', padding: '0.75rem', color: '#f1f5f9', fontSize: '1.1rem', lineHeight: 1.65, resize: 'none', outline: 'none', flex: 1 }}
+                  aria-label="Type the sentence from memory. Press Enter to check, 8 to hear Ukrainian hint."
+                />
+                <p style={{ color: '#475569', fontSize: '0.75rem' }}>
+                  Enter to check · 8 to hear {selectedLang.label} · ← to go back
+                </p>
+              </div>
+            ) : (
+              /* Result */
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <RecallResults
+                  diff={recallDiff}
+                  explanation={recallExplanation}
+                  explainLoading={recallExplainLoading}
+                  onRetry={retryRecall}
+                  onExplain={explainRecall}
+                  onHear={() => speak(recallSentence)}
+                  onClose={() => { setRecallMode(false); setRecallDiff(null); setRecallInput(''); }}
+                />
+                <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '0.75rem' }}>
+                  Enter to retry · ← to go back · 8 to hear {selectedLang.label}
+                </p>
+              </div>
+            )}
+          </div>
         ) : (
-          paragraphs.map((para, idx) => renderParagraph(para, idx))
+          /* Normal reading pane */
+          <div style={{ padding: '1rem' }}>
+            {isLoading ? (
+              <div className="text-slate-500 text-center py-8">Loading...</div>
+            ) : (
+              paragraphs.map((para, idx) => renderParagraph(para, idx))
+            )}
+          </div>
         )}
       </div>
 
-      {/* Keyboard shortcut hint */}
+      {/* Keyboard shortcut bar */}
       <div className="px-4 py-2 bg-slate-900 border-t border-slate-700 shrink-0">
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-          <span><kbd className="bg-slate-700 px-1 rounded">1</kbd>/<kbd className="bg-slate-700 px-1 rounded">3</kbd> letter</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">2</kbd> this letter</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">4</kbd>/<kbd className="bg-slate-700 px-1 rounded">6</kbd> word</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">5</kbd> this word</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">7</kbd>/<kbd className="bg-slate-700 px-1 rounded">9</kbd> line</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> read line</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">0</kbd> add card</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">f</kbd> search</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">[</kbd>/<kbd className="bg-slate-700 px-1 rounded">]</kbd> chapter</span>
-          <span><kbd className="bg-slate-700 px-1 rounded">Ctrl</kbd> stop</span>
-        </div>
+        {recallMode ? (
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span className="text-amber-500 font-semibold mr-1">Input:</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> hear {selectedLang.label}</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">Enter</kbd> check / retry</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">e</kbd> explain</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">←</kbd> back to text</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span><kbd className="bg-slate-700 px-1 rounded">1</kbd>/<kbd className="bg-slate-700 px-1 rounded">3</kbd> prev/next letter</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">2</kbd> this letter</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">4</kbd>/<kbd className="bg-slate-700 px-1 rounded">6</kbd> prev/next word</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">5</kbd> this word</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">7</kbd>/<kbd className="bg-slate-700 px-1 rounded">9</kbd> prev/next paragraph</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> read sentence</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">→</kbd> input mode</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">0</kbd> add flashcard</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">f</kbd> search</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">[</kbd>/<kbd className="bg-slate-700 px-1 rounded">]</kbd> prev/next chapter</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">Ctrl</kbd> stop TTS</span>
+          </div>
+        )}
       </div>
 
       {/* Add flashcard modal */}
@@ -680,6 +1006,11 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
               <div className="text-center py-4 text-slate-400 text-sm animate-pulse">Fetching translation…</div>
             ) : (
               <div className="space-y-3">
+                {addTranslationError && (
+                  <p className="text-xs text-red-400 bg-red-900/20 px-3 py-1.5 rounded">
+                    Auto-translation unavailable — check the Groq API key or type manually.
+                  </p>
+                )}
                 <div>
                   <label className="block text-sm text-slate-300 mb-1" htmlFor="translation">{selectedLang.label} translation</label>
                   <input
@@ -732,6 +1063,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
           </div>
         </div>
       )}
+
     </div>
   );
 }

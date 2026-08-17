@@ -20,8 +20,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPhonemeHints, setShowPhonemeHints] = useState(false);
+  const [ttsRate, setTtsRate] = useState(() => parseFloat(localStorage.getItem('tts-rate') ?? '0.9'));
   const { voices, selectedVoice, selectedVoiceName, setVoice } = useVoicePreference();
   const { languages, selectedLang, setLanguage } = useLanguagePreference();
+
+  const changeRate = useCallback((delta: number) => {
+    setTtsRate(prev => {
+      const next = Math.round(Math.min(2.0, Math.max(0.3, prev + delta)) * 10) / 10;
+      localStorage.setItem('tts-rate', String(next));
+      return next;
+    });
+  }, []);
 
   const loadFlashcards = useCallback(async () => {
     try {
@@ -31,27 +40,65 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
+    let stopPollingTimeout: ReturnType<typeof setTimeout> | null = null;
+
     (async () => {
       try {
         setIsLoading(true);
-        const allBooks = await api.books.list();
+        // Retry up to 8 times (every 2 s, 16 s total) so the loading screen
+        // stays visible while the backend finishes importing books on first run.
+        let allBooks: Book[] = [];
+        for (let attempt = 0; attempt < 8; attempt++) {
+          if (!mounted) return;
+          if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
+          allBooks = await api.books.list();
+          if (allBooks.length > 0) break;
+        }
+        if (!mounted) return;
         if (allBooks.length === 0) {
-          setError('No books found. Ensure the backend downloaded the book.');
-          setIsLoading(false);
+          setError('No books found. The backend may still be downloading them — please wait a moment and refresh.');
           return;
         }
         setBooks(allBooks);
         const b = allBooks[0];
         setBook(b);
         const chs = await api.books.chapters(b.id);
+        if (!mounted) return;
         setChapters(chs);
         await loadFlashcards();
+
+        // After showing the app, keep polling until all books finish importing so
+        // they appear in the dropdown without needing a manual page refresh.
+        let knownCount = allBooks.length;
+        pollingInterval = setInterval(async () => {
+          if (!mounted) return;
+          try {
+            const updated = await api.books.list();
+            if (updated.length > knownCount) {
+              knownCount = updated.length;
+              setBooks(updated);
+            }
+          } catch { /* ignore */ }
+        }, 3000);
+
+        stopPollingTimeout = setTimeout(() => {
+          if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+        }, 90000);
+
       } catch {
-        setError('Cannot connect to backend at http://localhost:5000. Make sure it is running.');
+        if (mounted) setError('Cannot connect to backend at http://localhost:5000. Make sure it is running.');
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     })();
+
+    return () => {
+      mounted = false;
+      if (pollingInterval) clearInterval(pollingInterval);
+      if (stopPollingTimeout) clearTimeout(stopPollingTimeout);
+    };
   }, [loadFlashcards]);
 
   const handleBookChange = useCallback(async (bookId: number) => {
@@ -59,8 +106,11 @@ export default function App() {
     if (!b || b.id === book?.id) return;
     setBook(b);
     setCurrentChapterNum(0);
-    const chs = await api.books.chapters(b.id);
-    setChapters(chs);
+    setChapters([]);
+    try {
+      const chs = await api.books.chapters(b.id);
+      setChapters(chs);
+    } catch { /* leave chapters empty */ }
   }, [books, book]);
 
   const dueCount = flashcards.filter(f => new Date(f.nextReview) <= new Date()).length;
@@ -236,6 +286,24 @@ export default function App() {
                   </select>
                 </div>
               )}
+
+              {/* Narration speed */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Speed</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button
+                    onClick={() => changeRate(-0.1)}
+                    style={{ width: 24, height: 24, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                    aria-label="Slow down narration"
+                  >−</button>
+                  <span style={{ fontSize: '11px', color: '#e2e8f0', width: 32, textAlign: 'center' }}>{ttsRate.toFixed(1)}×</span>
+                  <button
+                    onClick={() => changeRate(0.1)}
+                    style={{ width: 24, height: 24, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                    aria-label="Speed up narration"
+                  >+</button>
+                </div>
+              </div>
             </div>
 
             {/* Chapter list (reader only) */}
@@ -282,6 +350,7 @@ export default function App() {
             showPhonemeHints={showPhonemeHints}
             selectedVoice={selectedVoice}
             selectedLang={selectedLang}
+            ttsRate={ttsRate}
           />
         )}
         {view === 'flashcards' && (

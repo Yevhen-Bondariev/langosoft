@@ -44,17 +44,22 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// DB migration is synchronous (fast, no network) — do it before serving requests.
 using (var scope = app.Services.CreateScope())
 {
     var ctx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    if (string.IsNullOrEmpty(dbUrl))
-        await ctx.Database.MigrateAsync();
-    else
-        await ctx.Database.EnsureCreatedAsync();
+    await ctx.Database.EnsureCreatedAsync();
+}
 
+// Book import downloads from Gutenberg — run in background so the server
+// starts accepting requests immediately instead of blocking for 10-60 s.
+_ = Task.Run(async () =>
+{
+    await Task.Delay(500); // let the server bind to the port first
+    using var scope = app.Services.CreateScope();
     var importService = scope.ServiceProvider.GetRequiredService<BookImportService>();
     await importService.ImportAllBooksAsync();
-}
+});
 
 if (app.Environment.IsDevelopment())
 {

@@ -7,22 +7,36 @@ namespace LangoSoft.Api.Services;
 
 public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFactory, ILogger<BookImportService> logger)
 {
-    private record BookConfig(string Title, string Author, string Url, string? ChapterPattern);
+    private record BookConfig(
+        string Title, string Author, string Url, string? ChapterPattern,
+        RegexOptions ChapterRegexOptions = RegexOptions.IgnoreCase | RegexOptions.Multiline,
+        bool GroupByAct = false,
+        bool StripHtml = false);
 
     private static readonly BookConfig[] BookCatalog =
     [
         new("The Picture of Dorian Gray", "Oscar Wilde",
             "https://www.gutenberg.org/files/174/174-0.txt",
             @"(?:THE PREFACE|CHAPTER [IVXLC]+\.?)"),
+
+        // Case-sensitive + Multiline: TOC uses mixed-case "Scene", body uses all-caps "SCENE"
+        // so no false matches from the inline table of contents.
+        // Acts (^ACT) match col-0 only; the TOC has " ACT II" with a leading space.
         new("Hamlet", "William Shakespeare",
             "https://www.gutenberg.org/files/1524/1524-0.txt",
-            @"ACT [IVX]+\."),
+            @"^ACT [IVX]+|^ ?SCENE [IVX]+",
+            RegexOptions.Multiline,
+            GroupByAct: true),
+
         new("Julius Caesar", "William Shakespeare",
             "https://www.gutenberg.org/files/1522/1522-0.txt",
-            @"ACT [IVX]+\."),
+            @"^ACT [IVX]+|^ ?SCENE [IVX]+",
+            RegexOptions.Multiline,
+            GroupByAct: true),
+
         new("Politics and the English Language", "George Orwell",
-            "https://gutenberg.net.au/ebooks03/0300011.txt",
-            null),
+            "https://www.orwell.ru/library/essays/politics/english/e_polit",
+            null, StripHtml: true),
     ];
 
     public async Task ImportAllBooksAsync()
@@ -40,7 +54,7 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         logger.LogInformation("Downloading {Title}...", config.Title);
 
         var client = httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(60);
+        client.Timeout = TimeSpan.FromSeconds(15);
         string text;
         try
         {
@@ -52,8 +66,19 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
             return;
         }
 
+        if (config.StripHtml)
+            text = Regex.Replace(text, "<[^>]+>", " ");
         var content = ExtractMainContent(text);
-        var sections = SplitIntoSections(content, config.ChapterPattern, config.Title);
+        // For GroupByAct books (plays), skip the empty-section filter so that ACT headers
+        // survive long enough for CombineActAndSceneTitles to read them, then we filter below.
+        var sections = SplitIntoSections(content, config.ChapterPattern, config.Title,
+            config.ChapterRegexOptions, filterEmpty: !config.GroupByAct);
+        if (config.GroupByAct)
+        {
+            sections = CombineActAndSceneTitles(sections);
+            sections = sections.Where(s => SplitParagraphs(s.Body).Count > 0).ToList();
+            if (sections.Count == 0) sections.Add((config.Title, content));
+        }
 
         // Build the full object graph in memory before touching the DB —
         // this way a failed download never leaves a half-imported book visible.
@@ -79,6 +104,32 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         logger.LogInformation("Done: {Title} — {Count} chapters.", config.Title, chapterNum);
     }
 
+    // Prefix scene titles with their containing act: "ACT I · SCENE II".
+    // Act-only sections (empty body between ACT and first SCENE) are dropped.
+    internal static List<(string Title, string Body)> CombineActAndSceneTitles(
+        List<(string Title, string Body)> sections)
+    {
+        var actRegex = new Regex(@"^ACT [IVX]+", RegexOptions.IgnoreCase);
+        string currentAct = "";
+        var result = new List<(string Title, string Body)>();
+        foreach (var (title, body) in sections)
+        {
+            var t = title.Trim();
+            if (actRegex.IsMatch(t))
+            {
+                currentAct = t;
+                // Act header has no body (SCENE follows immediately) — keep it so
+                // the paragraph filter in SplitIntoSections can remove it later.
+                result.Add((t, body));
+            }
+            else
+            {
+                result.Add((string.IsNullOrEmpty(currentAct) ? t : $"{currentAct} · {t}", body));
+            }
+        }
+        return result;
+    }
+
     private static string ExtractMainContent(string text)
     {
         var startMarker = "*** START OF THE PROJECT GUTENBERG EBOOK";
@@ -94,7 +145,9 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
     }
 
     internal static List<(string Title, string Body)> SplitIntoSections(
-        string content, string? chapterPattern, string fallbackTitle = "")
+        string content, string? chapterPattern, string fallbackTitle = "",
+        RegexOptions regexOptions = RegexOptions.IgnoreCase | RegexOptions.Multiline,
+        bool filterEmpty = true)
     {
         if (string.IsNullOrWhiteSpace(chapterPattern))
         {
@@ -103,7 +156,7 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         }
 
         var sections = new List<(string Title, string Body)>();
-        var regex = new Regex(chapterPattern, RegexOptions.IgnoreCase);
+        var regex = new Regex(chapterPattern, regexOptions);
         var matches = regex.Matches(content);
 
         for (int i = 0; i < matches.Count; i++)
@@ -116,7 +169,8 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
             sections.Add((title, body));
         }
 
-        sections = sections.Where(s => SplitParagraphs(s.Body).Count > 0).ToList();
+        if (filterEmpty)
+            sections = sections.Where(s => SplitParagraphs(s.Body).Count > 0).ToList();
 
         if (sections.Count == 0)
             sections.Add((fallbackTitle, content));
