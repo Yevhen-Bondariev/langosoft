@@ -198,10 +198,10 @@ export default function App() {
                   onClick={() => setShowPhonemeHints(v => !v)}
                   role="switch"
                   aria-checked={showPhonemeHints}
-                  className={`relative w-9 h-5 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${showPhonemeHints ? 'bg-amber-500' : 'bg-slate-700'}`}
+                  className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${showPhonemeHints ? 'bg-amber-500' : 'bg-slate-700'}`}
                   onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') setShowPhonemeHints(v => !v); }}
                 >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showPhonemeHints ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showPhonemeHints ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
                 </button>
               </div>
 

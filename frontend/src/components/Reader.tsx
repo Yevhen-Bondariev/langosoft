@@ -5,6 +5,7 @@ import { tokenizeParagraph, getWordTokens } from '../utils/tokenize';
 import { useTTS } from '../hooks/useTTS';
 import { phonemeHints, type PhonemeHint } from '../utils/phonemes';
 import type { LanguageOption } from '../hooks/useLanguagePreference';
+import { grammarRules } from '../utils/grammarRules';
 
 interface Props {
   book: Book;
@@ -42,6 +43,10 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [tokens, setTokens] = useState<WordToken[]>([]);
   const [currentHint, setCurrentHint] = useState<PhonemeHint | null>(null);
+  const [grammarTenses, setGrammarTenses] = useState<string[] | null>(null);
+  const [grammarLoading, setGrammarLoading] = useState(false);
+  const [selectedTense, setSelectedTense] = useState<string | null>(null);
+  const grammarCache = useRef<Map<number, string[]>>(new Map());
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const translationInputRef = useRef<HTMLInputElement>(null);
@@ -82,6 +87,18 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   useEffect(() => {
     setCurrentLetterIndex(0);
   }, [currentWordIndex]);
+
+  // Clear grammar panel when paragraph changes
+  useEffect(() => {
+    const cached = grammarCache.current.get(currentParagraphIndex);
+    if (cached) {
+      setGrammarTenses(cached);
+      setSelectedTense(cached[0] ?? null);
+    } else {
+      setGrammarTenses(null);
+      setSelectedTense(null);
+    }
+  }, [currentParagraphIndex]);
 
   // Scroll current paragraph into view
   useEffect(() => {
@@ -142,6 +159,38 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     }
     saveProgress(chapterNum, currentParagraphIndex, clamped);
   }, [wordTokens, speak, chapterNum, currentParagraphIndex, saveProgress, showPhonemeHints]);
+
+  const analyzeGrammar = useCallback(async () => {
+    // Toggle off if already showing for this paragraph
+    if (grammarTenses !== null) {
+      setGrammarTenses(null);
+      setSelectedTense(null);
+      return;
+    }
+    const para = paragraphs[currentParagraphIndex];
+    if (!para) return;
+
+    // Use cache if available
+    const cached = grammarCache.current.get(currentParagraphIndex);
+    if (cached) {
+      setGrammarTenses(cached);
+      setSelectedTense(cached[0] ?? null);
+      return;
+    }
+
+    setGrammarLoading(true);
+    try {
+      const result = await api.grammar.analyze(para.text);
+      const tenses = result.tenses;
+      grammarCache.current.set(currentParagraphIndex, tenses);
+      setGrammarTenses(tenses);
+      setSelectedTense(tenses[0] ?? null);
+    } catch {
+      setGrammarTenses([]);
+    } finally {
+      setGrammarLoading(false);
+    }
+  }, [grammarTenses, paragraphs, currentParagraphIndex]);
 
   const readCurrentParagraph = useCallback(() => {
     const para = paragraphs[currentParagraphIndex];
@@ -371,6 +420,12 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
         setTimeout(() => searchInputRef.current?.focus(), 50);
         return;
       }
+      // ── g ── grammar analysis
+      if (key === 'g' || key === 'G') {
+        e.preventDefault();
+        analyzeGrammar();
+        return;
+      }
     };
 
     window.addEventListener('keydown', handler);
@@ -380,7 +435,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     currentWordIndex, currentLetterIndex, currentParagraphIndex, paragraphs,
     wordTokens, chapterNum, showPhonemeHints,
     readCurrentParagraph, goToWord, goToParagraph, goToChapter,
-    openAddFlashcard, submitFlashcard, speak, speakChain, stop,
+    openAddFlashcard, submitFlashcard, speak, speakChain, stop, analyzeGrammar,
   ]);
 
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
@@ -501,6 +556,59 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
         </div>
       )}
 
+      {/* Grammar analysis panel */}
+      {(grammarLoading || grammarTenses !== null) && (
+        <div className="px-4 py-2.5 bg-indigo-950/50 border-b border-indigo-800/40 shrink-0" role="status" aria-live="polite">
+          {grammarLoading ? (
+            <p className="text-indigo-400 text-xs animate-pulse">Analysing grammar…</p>
+          ) : grammarTenses && grammarTenses.length === 0 ? (
+            <p className="text-indigo-600 text-xs">No recognisable tense constructions found.</p>
+          ) : grammarTenses && (
+            <>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest shrink-0">Tenses:</span>
+                {grammarTenses.map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setSelectedTense(st => st === t ? null : t)}
+                    className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                      selectedTense === t
+                        ? 'bg-indigo-500 text-white font-semibold'
+                        : 'bg-indigo-900/60 text-indigo-300 hover:bg-indigo-800'
+                    }`}
+                  >
+                    {t.replace(/\b\w/g, l => l.toUpperCase())}
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setGrammarTenses(null); setSelectedTense(null); }}
+                  className="ml-auto text-indigo-700 hover:text-indigo-400 text-xs leading-none"
+                  aria-label="Close grammar panel"
+                >✕</button>
+              </div>
+              {selectedTense && grammarRules[selectedTense] && (
+                <div className="mt-2 space-y-1 text-xs border-t border-indigo-900 pt-2">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-indigo-300 font-bold">{grammarRules[selectedTense].name}</span>
+                    <span className="text-indigo-700 font-mono">{grammarRules[selectedTense].formula}</span>
+                  </div>
+                  <ul className="text-slate-400 space-y-0.5">
+                    {grammarRules[selectedTense].when.map((w, i) => (
+                      <li key={i}>• {w}</li>
+                    ))}
+                  </ul>
+                  {grammarRules[selectedTense].signal && (
+                    <p className="text-indigo-800 pt-0.5">
+                      Signal words: {grammarRules[selectedTense].signal!.join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Search bar */}
       {searchMode && (
         <div className="px-4 py-2 bg-blue-950 border-b border-blue-700 shrink-0">
@@ -554,6 +662,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
           <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> read line</span>
           <span><kbd className="bg-slate-700 px-1 rounded">0</kbd> add card</span>
           <span><kbd className="bg-slate-700 px-1 rounded">f</kbd> search</span>
+          <span><kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
           <span><kbd className="bg-slate-700 px-1 rounded">[</kbd>/<kbd className="bg-slate-700 px-1 rounded">]</kbd> chapter</span>
           <span><kbd className="bg-slate-700 px-1 rounded">Ctrl</kbd> stop</span>
         </div>

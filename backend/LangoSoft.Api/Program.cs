@@ -31,6 +31,7 @@ builder.Services.AddScoped<BookImportService>();
 builder.Services.AddScoped<SpacedRepetitionService>();
 builder.Services.AddScoped<EssayService>();
 builder.Services.AddScoped<WordService>();
+builder.Services.AddScoped<GrammarService>();
 
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>

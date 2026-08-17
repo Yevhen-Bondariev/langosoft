@@ -56,4 +56,11 @@ export const api = {
         body: JSON.stringify({ word, context, targetLanguage }),
       }),
   },
+  grammar: {
+    analyze: (text: string) =>
+      req<{ tenses: string[] }>('/grammar/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+  },
 };
