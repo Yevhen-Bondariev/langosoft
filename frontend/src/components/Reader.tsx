@@ -402,12 +402,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     speak(sentence || para.text);
   }, [paragraphs, currentParagraphIndex, currentWordIndex, speak]);
 
-  const readCurrentParagraph = useCallback(() => {
-    const para = paragraphs[currentParagraphIndex];
-    if (para) speak(para.text);
-  }, [paragraphs, currentParagraphIndex, speak]);
-
-  const openAddFlashcard = useCallback((wordIdx?: number) => {
+const openAddFlashcard = useCallback((wordIdx?: number) => {
     const idx = wordIdx !== undefined ? wordIdx : currentWordIndex;
     const token = wordTokens[idx];
     if (!token) return;
