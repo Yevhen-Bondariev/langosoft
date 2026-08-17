@@ -171,6 +171,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
 
   const [translationText, setTranslationText] = useState('');
   const [translationLoading, setTranslationLoading] = useState(false);
+  const [nvdaAnnounce, setNvdaAnnounce] = useState('');
   const translationCache = useRef<Map<number, string>>(new Map());
 
   // Pre-tokenize all paragraphs once when the chapter loads (not on every keystroke)
@@ -260,6 +261,12 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const wordTokens = getWordTokens(tokens);
   const totalChapters = chapters.length;
   const currentChapter = chapters.find(c => c.number === chapterNum);
+
+  // Announce text to NVDA via aria-live. Clear first so repeat presses re-fire.
+  const announceToNvda = useCallback((text: string) => {
+    setNvdaAnnounce('');
+    setTimeout(() => setNvdaAnnounce(text), 50);
+  }, []);
 
   const showStatus = useCallback((msg: string) => {
     setStatusMsg(msg);
@@ -484,9 +491,9 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           setRecallMode(false); setRecallDiff(null); setRecallInput('');
           e.preventDefault(); return;
         }
-        // 8 = hear Ukrainian translation
+        // 8 = hear Ukrainian translation (Web Speech + NVDA aria-live fallback)
         if ((e.key === '8' || e.code === 'Numpad8') && !inInput) {
-          if (translationText) speak(translationText, { lang: selectedLang.code });
+          if (translationText) { speak(translationText, { lang: selectedLang.code }); announceToNvda(translationText); }
           e.preventDefault(); return;
         }
         // Enter after result = retry
@@ -681,7 +688,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     readCurrentLine, goToWord, goToParagraph, goToChapter,
     openAddFlashcard, submitFlashcard, speak, stop, analyzeGrammar,
     recallMode, recallDiff, translationText, selectedLang.code,
-    retryRecall, explainRecall, enterRecall,
+    retryRecall, explainRecall, enterRecall, announceToNvda,
   ]);
 
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
@@ -751,6 +758,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
 
   return (
     <div className="flex flex-col h-full">
+      {/* NVDA aria-live region — visually hidden, read by screen readers */}
+      <div
+        aria-live="assertive"
+        aria-atomic="true"
+        lang={selectedLang.code}
+        style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap' }}
+      >
+        {nvdaAnnounce}
+      </div>
+
       {/* Chapter navigation bar */}
       <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 border-b border-slate-700 shrink-0">
         <button
@@ -920,7 +937,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onChange={e => setRecallInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitRecall(); }
-                    if (e.key === '8') { e.preventDefault(); if (translationText) speak(translationText, { lang: selectedLang.code }); }
+                    if (e.key === '8') { e.preventDefault(); if (translationText) { speak(translationText, { lang: selectedLang.code }); announceToNvda(translationText); } }
                   }}
                   rows={5}
                   placeholder="Type from memory…"
