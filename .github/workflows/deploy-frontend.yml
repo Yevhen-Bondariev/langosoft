@@ -38,7 +38,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_BASE: /langosoft/
-          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+          VITE_API_BASE: https://langosoft-1.onrender.com/api
 
       - uses: actions/upload-pages-artifact@v3
         with:
