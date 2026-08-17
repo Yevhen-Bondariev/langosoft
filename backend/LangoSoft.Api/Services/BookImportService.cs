@@ -52,40 +52,30 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
             return;
         }
 
-        var book = new Book { Title = config.Title, Author = config.Author };
-        db.Books.Add(book);
-        await db.SaveChangesAsync();
-
         var content = ExtractMainContent(text);
         var sections = SplitIntoSections(content, config.ChapterPattern, config.Title);
 
+        // Build the full object graph in memory before touching the DB —
+        // this way a failed download never leaves a half-imported book visible.
+        var book = new Book { Title = config.Title, Author = config.Author };
         int chapterNum = 0;
         foreach (var (title, body) in sections)
         {
             var chapter = new Chapter
             {
-                BookId = book.Id,
                 Number = chapterNum++,
                 Title = title.Trim()
             };
-            db.Chapters.Add(chapter);
-            await db.SaveChangesAsync();
-
             var rawParagraphs = SplitParagraphs(body);
-            var paragraphs = rawParagraphs
-                .Select((text2, idx) => new Paragraph
-                {
-                    ChapterId = chapter.Id,
-                    Index = idx,
-                    Text = text2
-                })
+            chapter.Paragraphs = rawParagraphs
+                .Select((text2, idx) => new Paragraph { Index = idx, Text = text2 })
                 .ToList();
-
-            db.Paragraphs.AddRange(paragraphs);
-            await db.SaveChangesAsync();
-            logger.LogInformation("  Ch {Num}: {ChTitle} ({Count} paras)", chapter.Number, chapter.Title, paragraphs.Count);
+            book.Chapters.Add(chapter);
+            logger.LogInformation("  Ch {Num}: {Title} ({Count} paras)", chapter.Number, chapter.Title, rawParagraphs.Count);
         }
 
+        db.Books.Add(book);
+        await db.SaveChangesAsync();
         logger.LogInformation("Done: {Title} — {Count} chapters.", config.Title, chapterNum);
     }
 

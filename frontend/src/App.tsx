@@ -273,6 +273,7 @@ export default function App() {
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
         {view === 'reader' && (
           <Reader
+            key={book.id}
             book={book}
             chapters={chapters}
             chapterNum={currentChapterNum}

@@ -71,10 +71,10 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   useEffect(() => {
     if (!progressLoaded) return;
     setIsLoading(true);
-    api.books.paragraphs(book.id, chapterNum).then(paras => {
-      setParagraphs(paras);
-      setIsLoading(false);
-    });
+    api.books.paragraphs(book.id, chapterNum)
+      .then(paras => setParagraphs(paras))
+      .catch(() => setParagraphs([]))
+      .finally(() => setIsLoading(false));
   }, [book.id, chapterNum, progressLoaded]);
 
   // Tokenize current paragraph
