@@ -1,6 +1,6 @@
 import type { Book, Chapter, Flashcard, Paragraph, ReadingProgress } from '../types';
 
-const BASE = 'http://localhost:5000/api';
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) || 'http://localhost:5000/api';
 
 async function req<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {

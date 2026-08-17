@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: langosoft-api
+    env: docker
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
