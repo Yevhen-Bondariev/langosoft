@@ -13,7 +13,16 @@ builder.Services.AddSwaggerGen();
 
 var dbUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 if (!string.IsNullOrEmpty(dbUrl))
-    builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(dbUrl));
+{
+    // Convert Neon/Heroku-style PostgreSQL URI to Npgsql connection string
+    var uri = new Uri(dbUrl);
+    var userInfo = uri.UserInfo.Split(':', 2);
+    var npgsqlConn = $"Host={uri.Host};Port={Math.Max(uri.Port, 5432)};" +
+                     $"Database={uri.AbsolutePath.TrimStart('/')};" +
+                     $"Username={userInfo[0]};Password={userInfo[1]};" +
+                     "SSL Mode=Require;Trust Server Certificate=true";
+    builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(npgsqlConn));
+}
 else
     builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite("Data Source=langosoft.db"));
 
