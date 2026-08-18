@@ -108,6 +108,7 @@ public class WordService(GroqClient groqClient)
             model = Model,
             max_tokens = 8192,
             temperature = 0,
+            response_format = new { type = "json_object" },
             messages = new[] { new { role = "user", content = prompt } }
         };
 
