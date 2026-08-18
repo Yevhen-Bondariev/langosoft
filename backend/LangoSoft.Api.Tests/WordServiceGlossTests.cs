@@ -28,7 +28,7 @@ public class WordServiceGlossTests
         }
     }
 
-    // Creates a fresh HttpClient per call so WordService can set client.Timeout each retry.
+    // Creates a fresh HttpClient per call so GroqClient can set client.Timeout each attempt.
     private sealed class FreshClientFactory(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> respond,
         List<HttpRequestMessage> log) : IHttpClientFactory
@@ -36,17 +36,23 @@ public class WordServiceGlossTests
         public HttpClient CreateClient(string name) => new(new FakeHandler(respond, log));
     }
 
-    private static IConfiguration BuildConfig(string apiKey) =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Groq:ApiKey"] = apiKey })
-            .Build();
+    private static IConfiguration BuildConfig(params string[] apiKeys)
+    {
+        var entries = new Dictionary<string, string?>();
+        for (var i = 0; i < apiKeys.Length; i++)
+            entries[$"Groq:ApiKeys:{i}"] = apiKeys[i];
+        return new ConfigurationBuilder().AddInMemoryCollection(entries).Build();
+    }
 
     private static (WordService svc, List<HttpRequestMessage> requests) Build(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> respond,
-        string apiKey = "test-key")
+        params string[] apiKeys)
     {
+        if (apiKeys.Length == 0) apiKeys = ["test-key"];
         var requests = new List<HttpRequestMessage>();
-        var svc = new WordService(new FreshClientFactory(respond, requests), BuildConfig(apiKey));
+        var factory = new FreshClientFactory(respond, requests);
+        var groqClient = new GroqClient(factory, BuildConfig(apiKeys));
+        var svc = new WordService(groqClient);
         return (svc, requests);
     }
 
@@ -115,7 +121,7 @@ public class WordServiceGlossTests
     [Fact]
     public async Task GlossAsync_ReturnsEmptyString_OnHttpError()
     {
-        // All 3 retry attempts fail — must return "" rather than throw.
+        // Non-429 HTTP error — GroqClient does not retry, must return "" rather than throw.
         var (svc, _) = Build(_ => Task.FromResult(
             new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
 
@@ -125,17 +131,20 @@ public class WordServiceGlossTests
     }
 
     [Fact]
-    public async Task GlossAsync_RetriesAndSucceeds_WhenFirstAttemptFails()
+    public async Task GlossAsync_RotatesKeyAndRetries_On429()
     {
-        // GlossAsync retries up to 3 times. First call fails, second returns JSON.
+        // First key returns 429 (rate-limited); second key succeeds.
+        // GroqClient should rotate to the next key and retry exactly once.
         var callCount = 0;
-        var (svc, _) = Build(_ =>
-        {
-            callCount++;
-            return callCount == 1
-                ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError))
-                : OkGroq("""{"nel":"in"}""");
-        });
+        var (svc, requests) = Build(
+            _ =>
+            {
+                callCount++;
+                return callCount == 1
+                    ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests))
+                    : OkGroq("""{"nel":"in"}""");
+            },
+            "key-1", "key-2");
 
         var result = await svc.GlossAsync("Nel", "English", "it");
 
