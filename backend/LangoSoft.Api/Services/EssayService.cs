@@ -3,48 +3,27 @@ using System.Text.Json;
 
 namespace LangoSoft.Api.Services;
 
-public class EssayService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+public class EssayService(GroqClient groqClient)
 {
-    private string? ApiKey =>
-        configuration["Groq:ApiKey"] is { Length: > 0 } k ? k
-        : Environment.GetEnvironmentVariable("GROQ_API_KEY");
-
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);
+    public bool IsConfigured => groqClient.IsConfigured;
 
     public async Task<EssayFeedbackDto> CheckEssayAsync(CheckEssayRequestDto request)
     {
-        var apiKey = ApiKey ?? throw new InvalidOperationException("GROQ_API_KEY not configured");
-
-        var prompt = BuildPrompt(request);
+        if (!groqClient.IsConfigured)
+            throw new InvalidOperationException("Groq API key not configured");
 
         var body = new
         {
-            model = "llama-3.3-70b-versatile",
-            max_tokens = 2048,
-            temperature = 0.1,
-            response_format = new { type = "json_object" },
-            messages = new[] { new { role = "user", content = prompt } }
+            model = "qwen/qwen3.6-27b",
+            max_tokens = 4096,
+            temperature = 0,
+            messages = new[] { new { role = "user", content = BuildPrompt(request) } }
         };
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-        httpRequest.Headers.Add("Authorization", $"Bearer {apiKey}");
-        httpRequest.Content = JsonContent.Create(body);
-
-        var client = httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(60);
-
-        var response = await client.SendAsync(httpRequest);
-        response.EnsureSuccessStatusCode();
-
-        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
-        var text = doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? throw new InvalidOperationException("Empty response from Groq");
+        var text = await groqClient.ChatAsync(body, timeoutSeconds: 60)
+            ?? throw new InvalidOperationException("No response from Groq (all keys may be rate-limited)");
 
         var json = ExtractJson(text);
-
         var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         return JsonSerializer.Deserialize<EssayFeedbackDto>(json, opts)
             ?? throw new InvalidOperationException("Could not parse Groq response as JSON");

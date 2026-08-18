@@ -2,30 +2,27 @@ using System.Text.Json;
 
 namespace LangoSoft.Api.Services;
 
-public class WordService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+public class WordService(GroqClient groqClient)
 {
+    private const string Model = "qwen/qwen3.6-27b";
+
     private static readonly Dictionary<string, string> LangNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ["en"] = "English", ["it"] = "Italian", ["fr"] = "French", ["de"] = "German",
-        ["es"] = "Spanish", ["ru"] = "Russian", ["uk"] = "Ukrainian", ["pl"] = "Polish",
+        ["es"] = "Spanish", ["uk"] = "Ukrainian", ["ru"] = "Russian", ["pl"] = "Polish",
         ["pt"] = "Portuguese", ["la"] = "Latin", ["el"] = "Greek", ["nl"] = "Dutch",
         ["ar"] = "Arabic", ["zh"] = "Chinese", ["ja"] = "Japanese", ["ko"] = "Korean",
         ["tr"] = "Turkish", ["he"] = "Hebrew",
     };
 
-    private string? ApiKey =>
-        configuration["Groq:ApiKey"] is { Length: > 0 } k ? k
-        : Environment.GetEnvironmentVariable("GROQ_API_KEY");
-
     public async Task<(string Translation, string Synonym)> TranslateAsync(
         string word, string context, string targetLanguage = "Ukrainian")
     {
-        var apiKey = ApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey))
-            return ("", "");
+        if (!groqClient.IsConfigured) return ("", "");
 
         var contextSnippet = context.Length > 300 ? context[..300] : context;
         var prompt =
+            "/no_think\n\n" +
             $"You help an advanced English learner build vocabulary flashcards.\n\n" +
             $"Word: \"{word}\"\n" +
             $"Context: \"{contextSnippet}\"\n\n" +
@@ -37,32 +34,17 @@ public class WordService(IHttpClientFactory httpClientFactory, IConfiguration co
 
         var body = new
         {
-            model = "openai/gpt-oss-120b",
-            max_tokens = 128,
-            temperature = 0.1,
-            response_format = new { type = "json_object" },
+            model = Model,
+            max_tokens = 2048,
+            temperature = 0,
             messages = new[] { new { role = "user", content = prompt } }
         };
 
+        var text = await groqClient.ChatAsync(body);
+        if (text == null) return ("", "");
+
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-            request.Headers.Add("Authorization", $"Bearer {apiKey}");
-            request.Content = JsonContent.Create(body);
-
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var response = await client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return ("", "");
-
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            var text = doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-
             var start = text.IndexOf('{');
             var end = text.LastIndexOf('}');
             if (start < 0 || end <= start) return ("", "");
@@ -73,116 +55,136 @@ public class WordService(IHttpClientFactory httpClientFactory, IConfiguration co
             var synonym = root.TryGetProperty("synonym", out var s) ? s.GetString() ?? "" : "";
             return (translation, synonym);
         }
-        catch
-        {
-            return ("", "");
-        }
+        catch { return ("", ""); }
     }
 
     public async Task<string> TranslateParagraphAsync(string text, string targetLanguage = "Ukrainian",
         string sourceLanguageCode = "en", bool literal = false)
     {
-        var apiKey = ApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey)) return "";
+        if (!groqClient.IsConfigured) return "";
 
         var sourceName = LangNames.TryGetValue(sourceLanguageCode, out var n) ? n : "English";
         var snippet = text.Length > 1000 ? text[..1000] : text;
         var prompt = literal
-            ? $"Produce a word-for-word gloss of the following {sourceName} text into {targetLanguage}. " +
+            ? $"/no_think\n\nProduce a word-for-word gloss of the following {sourceName} text into {targetLanguage}. " +
               $"Replace EACH {sourceName} word with its closest {targetLanguage} equivalent in the EXACT same order. " +
               "Do NOT rearrange words. Do NOT add articles, prepositions, or auxiliary words that are not present in the original. " +
               "Do NOT fix grammar or improve readability — the output must mirror the original word order exactly, " +
               $"even if it reads as broken {targetLanguage}. " +
               "Return ONLY the gloss, no explanations.\n\n" + snippet
-            : $"Translate the following {sourceName} literary text into {targetLanguage}. " +
+            : $"/no_think\n\nTranslate the following {sourceName} literary text into {targetLanguage}. " +
               "Preserve the tone, style and paragraph structure. " +
               "Return ONLY the translated text, no explanations, no quotes around it.\n\n" + snippet;
 
         var body = new
         {
-            model = "openai/gpt-oss-120b",
-            max_tokens = 1024,
+            model = Model,
+            max_tokens = 3072,
             temperature = 0.2,
             messages = new[] { new { role = "user", content = prompt } }
         };
 
-        try
-        {
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-            request.Headers.Add("Authorization", $"Bearer {apiKey}");
-            request.Content = JsonContent.Create(body);
-
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var response = await client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return "";
-
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            return doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-        }
-        catch { return ""; }
+        return await groqClient.ChatAsync(body) ?? "";
     }
 
     public async Task<string> GlossAsync(string text, string targetLanguage, string sourceLanguageCode)
     {
-        var apiKey = ApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey)) return "";
+        if (!groqClient.IsConfigured) return "";
 
         var sourceName = LangNames.TryGetValue(sourceLanguageCode, out var n) ? n : "English";
         var snippet = text.Length > 400 ? text[..400] : text;
+        // /no_think suppresses Qwen3 chain-of-thought reasoning tokens (saves ~3800 tokens per call).
         var prompt =
+            $"/no_think\n\n" +
             $"Translate every word of this {sourceName} text into {targetLanguage}. " +
-            "Return ONLY a JSON object where each key is an original word (lowercase, no punctuation) " +
-            "and the value is its translation. Include articles, prepositions, conjunctions — every word.\n\n" +
-            $"Text: {snippet}";
+            $"Output a single JSON object (no markdown, no code fences) where each key is an original word " +
+            $"(lowercase, strip punctuation) and the value is its {targetLanguage} translation. " +
+            $"Include every word: articles, prepositions, conjunctions.\n\n" +
+            $"Text: {snippet}\n\n" +
+            "Output only the JSON object, nothing else.";
 
         var body = new
         {
-            model = "openai/gpt-oss-120b",
-            max_tokens = 1024,
-            temperature = 0.1,
-            response_format = new { type = "json_object" },
+            model = Model,
+            max_tokens = 8192,
+            temperature = 0,
             messages = new[] { new { role = "user", content = prompt } }
         };
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        var raw = await groqClient.ChatAsync(body) ?? "";
+        // Extract JSON object from the response (model may still wrap in markdown)
+        var start = raw.IndexOf('{');
+        var end = raw.LastIndexOf('}');
+        return start >= 0 && end > start ? raw[start..(end + 1)] : raw;
+    }
+
+    public async Task<string> EvaluateTranslationAsync(
+        string original, string userTranslation,
+        string sourceLanguageCode, string targetLanguageName)
+    {
+        if (!groqClient.IsConfigured) return "";
+
+        var sourceName = LangNames.TryGetValue(sourceLanguageCode, out var n) ? n : "the source language";
+        var prompt =
+            $"You are a translation evaluator helping a C1/C2 learner translate {sourceName} literary text into {targetLanguageName}.\n\n" +
+            $"Original {sourceName}: \"{original}\"\n" +
+            $"Student's {targetLanguageName} translation: \"{userTranslation}\"\n\n" +
+            $"Evaluate whether the meaning is preserved.\n" +
+            $"Accept different valid phrasings, word orders, and minor stylistic choices.\n" +
+            $"Only flag: wrong word meaning, missing key concept, significant omission, or wrong register.\n" +
+            $"If the translation is essentially correct, write exactly: Correct.\n" +
+            $"Otherwise list up to 4 specific errors, one per line — state what is wrong and why briefly.\n" +
+            $"No praise, no filler, plain text only — no markdown, no asterisks.";
+
+        var body = new
         {
-            try
-            {
-                if (attempt > 0) await Task.Delay(attempt * 500);
-                var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-                request.Headers.Add("Authorization", $"Bearer {apiKey}");
-                request.Content = JsonContent.Create(body);
+            model = Model,
+            max_tokens = 2048,
+            temperature = 0.2,
+            messages = new[] { new { role = "user", content = prompt } }
+        };
 
-                var client = httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(30);
+        return (await groqClient.ChatAsync(body))?.Trim() ?? "";
+    }
 
-                var response = await client.SendAsync(request);
-                var rawBody = await response.Content.ReadAsStringAsync();
-                if (!response.IsSuccessStatusCode) continue;
+    public async Task<string> ArchaicGlossAsync(string text, string sourceLanguageCode)
+    {
+        if (!groqClient.IsConfigured) return "{}";
 
-                using var doc = JsonDocument.Parse(rawBody);
-                var content = doc.RootElement
-                    .GetProperty("choices")[0]
-                    .GetProperty("message")
-                    .GetProperty("content")
-                    .GetString()?.Trim() ?? "";
-                if (content.Length > 0) return content;
-            }
-            catch { }
+        var sourceName = LangNames.TryGetValue(sourceLanguageCode, out var n) ? n : "Italian";
+        var snippet = text.Length > 800 ? text[..800] : text;
+        var prompt =
+            "/no_think\n\n" +
+            $"You are an expert in {sourceName} literature and linguistics. " +
+            $"Identify every word in the following text that is archaic — " +
+            $"meaning it differs from modern standard {sourceName} in spelling, contracted form, grammatical ending, meaning, or word order.\n\n" +
+            "Return a JSON object where:\n" +
+            "- key = the word exactly as it appears in the text (lowercase, no punctuation)\n" +
+            "- value = one concise English sentence: what the archaic form is, its modern equivalent, and what it means\n\n" +
+            $"Include contractions, archaic verb endings, inverted syntax, obsolete vocabulary — everything that would confuse a modern {sourceName} reader.\n" +
+            "Return ONLY the JSON object. If there are no archaisms, return {}.\n\n" +
+            $"Text:\n{snippet}";
+
+        var body = new
+        {
+            model = Model,
+            max_tokens = 4096,
+            temperature = 0,
+            messages = new[] { new { role = "user", content = prompt } }
+        };
+
+        var content = (await groqClient.ChatAsync(body))?.Trim() ?? "{}";
+        try
+        {
+            using var inner = JsonDocument.Parse(content);
+            return inner.RootElement.ValueKind == JsonValueKind.Object ? content : "{}";
         }
-        return "";
+        catch { return "{}"; }
     }
 
     public async Task<string> CustomExplainAsync(string original, string? literary, string? literal, string question)
     {
-        var apiKey = ApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey)) return "";
+        if (!groqClient.IsConfigured) return "";
 
         var prompt =
             "You are a language tutor helping a C1/C2 level learner study a literary text.\n\n" +
@@ -195,38 +197,18 @@ public class WordService(IHttpClientFactory httpClientFactory, IConfiguration co
 
         var body = new
         {
-            model = "openai/gpt-oss-120b",
-            max_tokens = 512,
+            model = Model,
+            max_tokens = 2048,
             temperature = 0.2,
             messages = new[] { new { role = "user", content = prompt } }
         };
 
-        try
-        {
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-            request.Headers.Add("Authorization", $"Bearer {apiKey}");
-            request.Content = JsonContent.Create(body);
-
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var response = await client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return "";
-
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            return doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-        }
-        catch { return ""; }
+        return await groqClient.ChatAsync(body) ?? "";
     }
 
     public async Task<string> ExplainRecallAsync(string original, string typed)
     {
-        var apiKey = ApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey)) return "";
+        if (!groqClient.IsConfigured) return "";
 
         var prompt =
             "You are a writing coach for an advanced English learner at C1/C2 level.\n" +
@@ -241,31 +223,12 @@ public class WordService(IHttpClientFactory httpClientFactory, IConfiguration co
 
         var body = new
         {
-            model = "openai/gpt-oss-120b",
-            max_tokens = 512,
+            model = Model,
+            max_tokens = 2048,
             temperature = 0.2,
             messages = new[] { new { role = "user", content = prompt } }
         };
 
-        try
-        {
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-            request.Headers.Add("Authorization", $"Bearer {apiKey}");
-            request.Content = JsonContent.Create(body);
-
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var response = await client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return "";
-
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            return doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-        }
-        catch { return ""; }
+        return await groqClient.ChatAsync(body) ?? "";
     }
 }

@@ -3,6 +3,7 @@ using System;
 using LangoSoft.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LangoSoft.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818125136_AddParagraphArchaismCache")]
+    partial class AddParagraphArchaismCache
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.30");
@@ -158,31 +161,6 @@ namespace LangoSoft.Api.Migrations
                     b.ToTable("ParagraphArchaismCaches");
                 });
 
-            modelBuilder.Entity("LangoSoft.Api.Models.ParagraphGlossCache", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("GlossJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ParagraphId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("TargetLanguage")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ParagraphId", "TargetLanguage")
-                        .IsUnique();
-
-                    b.ToTable("ParagraphGlossCaches");
-                });
-
             modelBuilder.Entity("LangoSoft.Api.Models.ReadingProgress", b =>
                 {
                     b.Property<int>("Id")
@@ -235,17 +213,6 @@ namespace LangoSoft.Api.Migrations
                 });
 
             modelBuilder.Entity("LangoSoft.Api.Models.ParagraphArchaismCache", b =>
-                {
-                    b.HasOne("LangoSoft.Api.Models.Paragraph", "Paragraph")
-                        .WithMany()
-                        .HasForeignKey("ParagraphId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Paragraph");
-                });
-
-            modelBuilder.Entity("LangoSoft.Api.Models.ParagraphGlossCache", b =>
                 {
                     b.HasOne("LangoSoft.Api.Models.Paragraph", "Paragraph")
                         .WithMany()

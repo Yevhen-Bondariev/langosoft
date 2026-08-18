@@ -29,6 +29,7 @@ else
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<BookImportService>();
 builder.Services.AddScoped<SpacedRepetitionService>();
+builder.Services.AddSingleton<GroqClient>();
 builder.Services.AddScoped<EssayService>();
 builder.Services.AddScoped<WordService>();
 builder.Services.AddScoped<GrammarService>();
@@ -44,11 +45,50 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// DB migration is synchronous (fast, no network) — do it before serving requests.
+// DB init: EnsureCreated handles new DBs; raw SQL patches existing DBs that predate EF migrations.
 using (var scope = app.Services.CreateScope())
 {
     var ctx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await ctx.Database.EnsureCreatedAsync();
+
+    var isPostgres = ctx.Database.ProviderName?.Contains("Npgsql") == true;
+    var createArchaismCache = isPostgres
+        ? """
+          CREATE TABLE IF NOT EXISTS "ParagraphArchaismCaches" (
+              "Id" serial PRIMARY KEY,
+              "ParagraphId" integer NOT NULL UNIQUE REFERENCES "Paragraphs"("Id") ON DELETE CASCADE,
+              "ArchaismsJson" text NOT NULL
+          )
+          """
+        : """
+          CREATE TABLE IF NOT EXISTS "ParagraphArchaismCaches" (
+              "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
+              "ParagraphId" INTEGER NOT NULL UNIQUE REFERENCES "Paragraphs"("Id") ON DELETE CASCADE,
+              "ArchaismsJson" TEXT NOT NULL
+          )
+          """;
+    await ctx.Database.ExecuteSqlRawAsync(createArchaismCache);
+
+    var createGlossCache = isPostgres
+        ? """
+          CREATE TABLE IF NOT EXISTS "ParagraphGlossCaches" (
+              "Id" serial PRIMARY KEY,
+              "ParagraphId" integer NOT NULL REFERENCES "Paragraphs"("Id") ON DELETE CASCADE,
+              "TargetLanguage" text NOT NULL,
+              "GlossJson" text NOT NULL,
+              UNIQUE("ParagraphId", "TargetLanguage")
+          )
+          """
+        : """
+          CREATE TABLE IF NOT EXISTS "ParagraphGlossCaches" (
+              "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
+              "ParagraphId" INTEGER NOT NULL REFERENCES "Paragraphs"("Id") ON DELETE CASCADE,
+              "TargetLanguage" TEXT NOT NULL,
+              "GlossJson" TEXT NOT NULL,
+              UNIQUE("ParagraphId", "TargetLanguage")
+          )
+          """;
+    await ctx.Database.ExecuteSqlRawAsync(createGlossCache);
 }
 
 // Book import downloads from Gutenberg — run in background so the server

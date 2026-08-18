@@ -65,6 +65,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ original, literary, literal, question }),
       }),
+    evaluateTranslation: (original: string, userTranslation: string, sourceLanguageCode: string, targetLanguageName: string) =>
+      req<{ feedback: string }>('/words/evaluate-translation', {
+        method: 'POST',
+        body: JSON.stringify({ original, userTranslation, sourceLanguageCode, targetLanguageName }),
+      }),
     gloss: (text: string, targetLanguage: string, sourceLanguageCode: string) =>
       req<{ gloss: string }>('/words/gloss', {
         method: 'POST',
@@ -77,10 +82,16 @@ export const api = {
       }),
   },
   grammar: {
-    analyze: (text: string) =>
+    analyze: (text: string, languageCode = 'en') =>
       req<{ tenses: string[] }>('/grammar/analyze', {
         method: 'POST',
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, languageCode }),
       }),
+  },
+  paragraphs: {
+    archaisms: (paragraphId: number) =>
+      req<{ archaisms: string }>(`/paragraphs/${paragraphId}/archaisms`),
+    gloss: (paragraphId: number, targetLanguage = 'English') =>
+      req<{ gloss: string }>(`/paragraphs/${paragraphId}/gloss?targetLanguage=${encodeURIComponent(targetLanguage)}`),
   },
 };

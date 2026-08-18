@@ -72,4 +72,21 @@ public class WordsController(WordService wordService) : ControllerBase
         var explanation = await wordService.ExplainRecallAsync(req.Original, req.Typed ?? "");
         return Ok(new RecallExplainResponse(explanation));
     }
+
+    public record EvaluateTranslationRequest(
+        string Original, string UserTranslation,
+        string? SourceLanguageCode, string? TargetLanguageName);
+    public record EvaluateTranslationResponse(string Feedback);
+
+    [HttpPost("evaluate-translation")]
+    public async Task<ActionResult<EvaluateTranslationResponse>> EvaluateTranslation(
+        [FromBody] EvaluateTranslationRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Original) || string.IsNullOrWhiteSpace(req.UserTranslation))
+            return BadRequest("original and userTranslation are required");
+        var src = string.IsNullOrWhiteSpace(req.SourceLanguageCode) ? "it" : req.SourceLanguageCode;
+        var tgt = string.IsNullOrWhiteSpace(req.TargetLanguageName) ? "Ukrainian" : req.TargetLanguageName;
+        var feedback = await wordService.EvaluateTranslationAsync(req.Original, req.UserTranslation, src, tgt);
+        return Ok(new EvaluateTranslationResponse(feedback));
+    }
 }

@@ -59,6 +59,14 @@ body {
   background-color: rgba(245, 158, 11, 0.12);
 }
 
+.word-archaic {
+  border-bottom: 2px dotted rgba(167, 139, 250, 0.7);
+}
+
+.word-archaic:hover {
+  background-color: rgba(167, 139, 250, 0.1);
+}
+
 /* ── Focus states ─────────────────────────────────────────────────────────── */
 :focus { outline: none; }
 :focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; border-radius: 3px; }
@@ -81,4 +89,52 @@ body {
   background: rgba(30, 41, 59, 0.7);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+/* ── Mobile / touch ───────────────────────────────────────────────────────── */
+
+/* Prevent iOS Safari from zooming on input focus */
+@media (max-width: 640px) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
+/* Larger tap targets for word tokens on touch devices */
+@media (pointer: coarse) {
+  .word-token {
+    padding: 6px 4px;
+    margin: -4px -2px;
+    border-radius: 5px;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .word-current {
+    padding: 6px 5px;
+    margin: -4px -3px;
+  }
+}
+
+/* Touch active feedback (replaces hover on touch devices) */
+@media (pointer: coarse) {
+  .word-token:active { background-color: rgba(245, 158, 11, 0.3); }
+  .word-archaic:active { background-color: rgba(167, 139, 250, 0.2); }
+}
+
+/* Sidebar drawer backdrop */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Safe-area inset for notched phones (iPhone X+) */
+.mobile-action-bar {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
 }

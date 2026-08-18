@@ -10,6 +10,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Paragraph> Paragraphs => Set<Paragraph>();
     public DbSet<Flashcard> Flashcards => Set<Flashcard>();
     public DbSet<ReadingProgress> ReadingProgresses => Set<ReadingProgress>();
+    public DbSet<ParagraphArchaismCache> ParagraphArchaismCaches => Set<ParagraphArchaismCache>();
+    public DbSet<ParagraphGlossCache> ParagraphGlossCaches => Set<ParagraphGlossCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,5 +22,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(p => new { p.ChapterId, p.Index });
         modelBuilder.Entity<Chapter>()
             .HasIndex(c => new { c.BookId, c.Number });
+        modelBuilder.Entity<ParagraphArchaismCache>()
+            .HasIndex(a => a.ParagraphId)
+            .IsUnique();
+        modelBuilder.Entity<ParagraphGlossCache>()
+            .HasIndex(g => new { g.ParagraphId, g.TargetLanguage })
+            .IsUnique();
     }
 }

@@ -6,8 +6,10 @@ import Flashcards from './components/Flashcards';
 import WordList from './components/WordList';
 import ChapterList from './components/ChapterList';
 import Essay from './components/Essay';
+import { SidebarDrawer } from './components/SidebarDrawer';
 import { useVoicePreference } from './hooks/useVoicePreference';
 import { useLanguagePreference } from './hooks/useLanguagePreference';
+import { useIsMobile } from './hooks/useIsMobile';
 
 export default function App() {
   const [view, setView] = useState<AppView>('reader');
@@ -23,6 +25,12 @@ export default function App() {
   const [ttsRate, setTtsRate] = useState(() => parseFloat(localStorage.getItem('tts-rate') ?? '0.9'));
   const { voices, selectedVoice, selectedVoiceName, setVoice } = useVoicePreference();
   const { languages, selectedLang, setLanguage } = useLanguagePreference();
+  const isMobile = useIsMobile();
+
+  // On mobile, start with sidebar closed
+  useEffect(() => {
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
 
   const changeRate = useCallback((delta: number) => {
     setTtsRate(prev => {
@@ -55,8 +63,6 @@ export default function App() {
     (async () => {
       try {
         setIsLoading(true);
-        // Retry up to 8 times (every 2 s, 16 s total) so the loading screen
-        // stays visible while the backend finishes importing books on first run.
         let allBooks: Book[] = [];
         for (let attempt = 0; attempt < 8; attempt++) {
           if (!mounted) return;
@@ -77,8 +83,6 @@ export default function App() {
         setChapters(chs);
         await loadFlashcards();
 
-        // After showing the app, keep polling until all books finish importing so
-        // they appear in the dropdown without needing a manual page refresh.
         let knownCount = allBooks.length;
         pollingInterval = setInterval(async () => {
           if (!mounted) return;
@@ -123,7 +127,6 @@ export default function App() {
 
   const dueCount = flashcards.filter(f => new Date(f.nextReview) <= new Date()).length;
 
-  // Global view-switching shortcuts: Alt+1…4
   useEffect(() => {
     const views: AppView[] = ['reader', 'flashcards', 'words', 'essay'];
     const handler = (e: KeyboardEvent) => {
@@ -174,176 +177,201 @@ export default function App() {
     { id: 'essay',      label: 'Essay',      icon: '✍️',  shortcut: 'Alt+4' },
   ];
 
+  // Shared sidebar content (used by both desktop aside and mobile drawer)
+  const sidebarContent = (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Brand / book info */}
+      <div className="px-3 py-3 border-b border-slate-800">
+        <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mb-1">LangoSoft</p>
+        {books.length > 1 ? (
+          <select
+            value={book.id}
+            onChange={e => handleBookChange(Number(e.target.value))}
+            className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+            aria-label="Select book"
+          >
+            {books.map(b => (
+              <option key={b.id} value={b.id}>{b.title}</option>
+            ))}
+          </select>
+        ) : (
+          <>
+            <p className="text-xs text-slate-200 font-semibold leading-snug">{book.title}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">{book.author}</p>
+          </>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="px-2 py-2 border-b border-slate-800 space-y-0.5">
+        {navItems.map(item => (
+          <button
+            key={item.id}
+            onClick={() => { setView(item.id); if (isMobile) setSidebarOpen(false); }}
+            title={item.shortcut}
+            className={`w-full flex items-center gap-2 px-2.5 py-3 rounded-lg text-sm transition-all ${
+              view === item.id
+                ? 'bg-amber-500/15 text-amber-300 font-semibold ring-1 ring-amber-500/30'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            }`}
+          >
+            <span className="text-base leading-none">{item.icon}</span>
+            <span className="flex-1 text-left">{item.label}</span>
+            {item.id === 'words' && (
+              <span className="text-[10px] text-slate-600">({flashcards.length})</span>
+            )}
+            {item.badge !== undefined && (
+              <span className="bg-amber-500 text-slate-950 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                {item.badge}
+              </span>
+            )}
+            {!isMobile && (
+              <kbd className="text-[9px] text-slate-700 bg-slate-800 border border-slate-700 px-1 py-0.5 rounded leading-none">
+                {item.shortcut}
+              </kbd>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      {/* Settings */}
+      <div className="px-3 py-2.5 border-b border-slate-800 space-y-3">
+        {/* Phoneme hints toggle */}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-slate-400">Phoneme hints</span>
+          <button
+            onClick={() => setShowPhonemeHints(v => !v)}
+            role="switch"
+            aria-checked={showPhonemeHints}
+            className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${showPhonemeHints ? 'bg-amber-500' : 'bg-slate-700'}`}
+            onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') setShowPhonemeHints(v => !v); }}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${showPhonemeHints ? 'left-[18px]' : 'left-0.5'}`} />
+          </button>
+        </div>
+
+        {/* Translation language picker */}
+        <div>
+          <label className="text-[11px] text-slate-400 block mb-1">Translation language</label>
+          <select
+            value={selectedLang.code}
+            onChange={e => setLanguage(e.target.value)}
+            className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+            aria-label="Select translation language"
+          >
+            {languages.map(l => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Voice picker */}
+        {voices.length > 0 && (
+          <div>
+            <label className="text-[11px] text-slate-400 block mb-1">Voice</label>
+            <select
+              value={selectedVoiceName}
+              onChange={e => setVoice(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+              aria-label="Select TTS voice"
+            >
+              {voices.map(v => (
+                <option key={v.name} value={v.name}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Narration speed */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Speed</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button
+              onClick={() => changeRate(-0.1)}
+              style={{ width: 32, height: 32, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+              aria-label="Slow down narration"
+            >−</button>
+            <span style={{ fontSize: '13px', color: '#e2e8f0', width: 36, textAlign: 'center' }}>{ttsRate.toFixed(1)}×</span>
+            <button
+              onClick={() => changeRate(0.1)}
+              style={{ width: 32, height: 32, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+              aria-label="Speed up narration"
+            >+</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Chapter list (reader only) */}
+      {view === 'reader' && (
+        <div className="flex-1 overflow-y-auto">
+          <p className="px-3 pt-2.5 pb-1 text-[10px] text-slate-500 font-bold uppercase tracking-widest">Chapters</p>
+          <ChapterList
+            chapters={chapters}
+            currentChapterNum={currentChapterNum}
+            onSelect={num => { setCurrentChapterNum(num); if (isMobile) setSidebarOpen(false); }}
+          />
+        </div>
+      )}
+
+      {/* Stats (non-reader views) */}
+      {view !== 'reader' && (
+        <div className="mt-auto p-3 border-t border-slate-800">
+          <div className="text-[11px] text-slate-500 space-y-1">
+            <div className="flex justify-between">
+              <span>Saved words</span>
+              <span className="text-slate-400 font-semibold">{flashcards.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Due for review</span>
+              <span className={dueCount > 0 ? 'text-amber-400 font-semibold' : 'text-slate-400'}>{dueCount}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Donate */}
+      <div className="p-3 border-t border-slate-800">
+        <a
+          href="https://ko-fi.com/yevhenbondariev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-[11px] font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 transition-colors"
+          aria-label="Support this project on Ko-fi"
+        >
+          <span aria-hidden="true">☕</span> Support this project
+        </a>
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-full flex bg-slate-950 text-slate-100">
 
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside
-        className={`${sidebarOpen ? 'w-56' : 'w-12'} flex-shrink-0 flex flex-col transition-all duration-200 overflow-hidden
-          bg-slate-900 border-r border-slate-800`}
-        style={{ boxShadow: '2px 0 12px rgba(0,0,0,0.4)' }}
-        aria-label="Sidebar navigation"
-      >
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setSidebarOpen(o => !o)}
-          className="h-10 flex items-center justify-center hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition-colors border-b border-slate-800 shrink-0"
-          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+      {/* ── Desktop sidebar (hidden on mobile) ──────────────────────────── */}
+      {!isMobile && (
+        <aside
+          className={`${sidebarOpen ? 'w-56' : 'w-12'} flex-shrink-0 flex flex-col transition-all duration-200 overflow-hidden bg-slate-900 border-r border-slate-800`}
+          style={{ boxShadow: '2px 0 12px rgba(0,0,0,0.4)' }}
+          aria-label="Sidebar navigation"
         >
-          <span className="text-xs font-bold">{sidebarOpen ? '◀' : '▶'}</span>
-        </button>
+          {/* Collapse toggle */}
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            className="h-10 flex items-center justify-center hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition-colors border-b border-slate-800 shrink-0"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <span className="text-xs font-bold">{sidebarOpen ? '◀' : '▶'}</span>
+          </button>
+          {sidebarOpen && sidebarContent}
+        </aside>
+      )}
 
-        {sidebarOpen && (
-          <div className="flex flex-col flex-1 overflow-hidden">
-            {/* Brand / book info */}
-            <div className="px-3 py-3 border-b border-slate-800">
-              <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mb-1">LangoSoft</p>
-              {books.length > 1 ? (
-                <select
-                  value={book.id}
-                  onChange={e => handleBookChange(Number(e.target.value))}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-                  aria-label="Select book"
-                >
-                  {books.map(b => (
-                    <option key={b.id} value={b.id}>{b.title}</option>
-                  ))}
-                </select>
-              ) : (
-                <>
-                  <p className="text-xs text-slate-200 font-semibold leading-snug">{book.title}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{book.author}</p>
-                </>
-              )}
-            </div>
-
-            {/* Navigation */}
-            <nav className="px-2 py-2 border-b border-slate-800 space-y-0.5">
-              {navItems.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setView(item.id)}
-                  title={item.shortcut}
-                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-all ${
-                    view === item.id
-                      ? 'bg-amber-500/15 text-amber-300 font-semibold ring-1 ring-amber-500/30'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-base leading-none">{item.icon}</span>
-                  <span className="flex-1 text-left">{item.label}</span>
-                  {item.id === 'words' && (
-                    <span className="text-[10px] text-slate-600">({flashcards.length})</span>
-                  )}
-                  {item.badge !== undefined && (
-                    <span className="bg-amber-500 text-slate-950 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                      {item.badge}
-                    </span>
-                  )}
-                  <kbd className="text-[9px] text-slate-700 bg-slate-800 border border-slate-700 px-1 py-0.5 rounded leading-none">
-                    {item.shortcut}
-                  </kbd>
-                </button>
-              ))}
-            </nav>
-
-            {/* Settings */}
-            <div className="px-3 py-2.5 border-b border-slate-800 space-y-3">
-              {/* Phoneme hints toggle */}
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">Phoneme hints</span>
-                <button
-                  onClick={() => setShowPhonemeHints(v => !v)}
-                  role="switch"
-                  aria-checked={showPhonemeHints}
-                  className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${showPhonemeHints ? 'bg-amber-500' : 'bg-slate-700'}`}
-                  onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') setShowPhonemeHints(v => !v); }}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showPhonemeHints ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-
-              {/* Translation language picker */}
-              <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Translation language</label>
-                <select
-                  value={selectedLang.code}
-                  onChange={e => setLanguage(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-                  aria-label="Select translation language"
-                >
-                  {languages.map(l => (
-                    <option key={l.code} value={l.code}>{l.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Voice picker */}
-              {voices.length > 0 && (
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Voice</label>
-                  <select
-                    value={selectedVoiceName}
-                    onChange={e => setVoice(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-                    aria-label="Select TTS voice"
-                  >
-                    {voices.map(v => (
-                      <option key={v.name} value={v.name}>{v.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Narration speed */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Speed</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <button
-                    onClick={() => changeRate(-0.1)}
-                    style={{ width: 24, height: 24, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                    aria-label="Slow down narration"
-                  >−</button>
-                  <span style={{ fontSize: '11px', color: '#e2e8f0', width: 32, textAlign: 'center' }}>{ttsRate.toFixed(1)}×</span>
-                  <button
-                    onClick={() => changeRate(0.1)}
-                    style={{ width: 24, height: 24, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                    aria-label="Speed up narration"
-                  >+</button>
-                </div>
-              </div>
-            </div>
-
-            {/* Chapter list (reader only) */}
-            {view === 'reader' && (
-              <div className="flex-1 overflow-y-auto">
-                <p className="px-3 pt-2.5 pb-1 text-[10px] text-slate-500 font-bold uppercase tracking-widest">Chapters</p>
-                <ChapterList
-                  chapters={chapters}
-                  currentChapterNum={currentChapterNum}
-                  onSelect={num => setCurrentChapterNum(num)}
-                />
-              </div>
-            )}
-
-            {/* Stats (non-reader views) */}
-            {view !== 'reader' && (
-              <div className="mt-auto p-3 border-t border-slate-800">
-                <div className="text-[11px] text-slate-500 space-y-1">
-                  <div className="flex justify-between">
-                    <span>Saved words</span>
-                    <span className="text-slate-400 font-semibold">{flashcards.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Due for review</span>
-                    <span className={dueCount > 0 ? 'text-amber-400 font-semibold' : 'text-slate-400'}>{dueCount}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </aside>
+      {/* ── Mobile sidebar drawer ────────────────────────────────────────── */}
+      {isMobile && (
+        <SidebarDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
+          {sidebarContent}
+        </SidebarDrawer>
+      )}
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
@@ -360,6 +388,9 @@ export default function App() {
             selectedLang={selectedLang}
             ttsRate={ttsRate}
             onRateToggle={toggleRate}
+            onRateChange={changeRate}
+            isMobile={isMobile}
+            onOpenSidebar={() => setSidebarOpen(true)}
           />
         )}
         {view === 'flashcards' && (

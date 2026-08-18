@@ -1,18 +1,26 @@
 import type { WordToken } from '../types';
 
+// Apostrophe variants found in literary texts:
+//   U+0027 straight apostrophe  '
+//   U+2018 left  single quote   '
+//   U+2019 right single quote   ' (used as apostrophe in most Project Gutenberg Italian texts)
+const APOS = "'‘’";
+const wordRe   = new RegExp(`([\\p{L}${APOS}\\-]+)|([^\\p{L}${APOS}\\-]+)`, 'gu');
+const stripRe  = new RegExp(`^[${APOS}\\-]+|[${APOS}\\-]+$`, 'gu');
+
 export function tokenizeParagraph(text: string): WordToken[] {
   const tokens: WordToken[] = [];
-  const regex = /([\p{L}''\-]+)|([^\p{L}''\-]+)/gu;
+  wordRe.lastIndex = 0;
   let wordIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = wordRe.exec(text)) !== null) {
     if (match[1]) {
       tokens.push({
         type: 'word',
         text: match[1],
         wordIndex,
-        rawWord: match[1].replace(/^[''\-]+|[''\-]+$/gu, ''),
+        rawWord: match[1].replace(stripRe, ''),
       });
       wordIndex++;
     } else {
