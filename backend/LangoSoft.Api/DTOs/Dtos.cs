@@ -1,6 +1,6 @@
 namespace LangoSoft.Api.DTOs;
 
-public record BookDto(int Id, string Title, string Author, int ChapterCount);
+public record BookDto(int Id, string Title, string Author, string Language, int ChapterCount);
 public record ChapterDto(int Id, int BookId, int Number, string Title, int ParagraphCount);
 public record ParagraphDto(int Id, int ChapterId, int Index, string Text);
 public record ProgressDto(int BookId, int ChapterNumber, int ParagraphIndex, int WordIndex, DateTime LastRead);

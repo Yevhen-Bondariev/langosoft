@@ -60,10 +60,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ original, typed }),
       }),
-    translateParagraph: (text: string, targetLanguage: string) =>
+    translateParagraph: (text: string, targetLanguage: string, sourceLanguageCode = 'en') =>
       req<{ translation: string }>('/words/translate-paragraph', {
         method: 'POST',
-        body: JSON.stringify({ text, targetLanguage }),
+        body: JSON.stringify({ text, targetLanguage, sourceLanguageCode }),
       }),
   },
   grammar: {

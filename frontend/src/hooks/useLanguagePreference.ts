@@ -8,6 +8,7 @@ export interface LanguageOption {
 
 export const LANGUAGES: LanguageOption[] = [
   { code: 'uk', label: 'Українська', name: 'Ukrainian' },
+  { code: 'en', label: 'English', name: 'English' },
   { code: 'es', label: 'Español', name: 'Spanish' },
   { code: 'de', label: 'Deutsch', name: 'German' },
   { code: 'fr', label: 'Français', name: 'French' },

@@ -21,7 +21,7 @@ public class WordsController(WordService wordService) : ControllerBase
         return Ok(new TranslateResponse(translation, synonym));
     }
 
-    public record TranslateParagraphRequest(string Text, string? TargetLanguage);
+    public record TranslateParagraphRequest(string Text, string? TargetLanguage, string? SourceLanguageCode);
     public record TranslateParagraphResponse(string Translation);
 
     [HttpPost("translate-paragraph")]
@@ -30,7 +30,8 @@ public class WordsController(WordService wordService) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Text))
             return BadRequest("text is required");
         var lang = string.IsNullOrWhiteSpace(req.TargetLanguage) ? "Ukrainian" : req.TargetLanguage;
-        var translation = await wordService.TranslateParagraphAsync(req.Text, lang);
+        var src = string.IsNullOrWhiteSpace(req.SourceLanguageCode) ? "en" : req.SourceLanguageCode;
+        var translation = await wordService.TranslateParagraphAsync(req.Text, lang, src);
         return Ok(new TranslateParagraphResponse(translation));
     }
 

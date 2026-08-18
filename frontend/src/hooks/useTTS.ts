@@ -12,27 +12,27 @@ interface ChainItem {
   rate?: number;
 }
 
-export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9) {
+export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultLang = 'en') {
   const speak = useCallback((text: string, options?: SpeakOptions) => {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = options?.rate ?? rate;
     u.pitch = options?.pitch ?? 1;
 
-    if (options?.lang) {
-      // Try to find a voice for the requested language; fall back to the user's
-      // selected English voice so something is always audible.
-      const langPrefix = options.lang.split('-')[0];
-      const match = window.speechSynthesis.getVoices().find(v => v.lang.startsWith(langPrefix));
-      if (match) { u.voice = match; u.lang = match.lang; }
-      else        { if (voice) u.voice = voice; u.lang = 'en-GB'; }
+    const targetLang = options?.lang ?? defaultLang;
+    const langPrefix = targetLang.split('-')[0];
+    const match = window.speechSynthesis.getVoices().find(v => v.lang.startsWith(langPrefix));
+    if (match) {
+      u.voice = match; u.lang = match.lang;
+    } else if (voice) {
+      // No voice for requested language — use selected voice as fallback
+      u.voice = voice; u.lang = voice.lang;
     } else {
-      u.lang = 'en-GB';
-      if (voice) u.voice = voice;
+      u.lang = targetLang;
     }
 
     window.speechSynthesis.speak(u);
-  }, [voice, rate]);
+  }, [voice, rate, defaultLang]);
 
   // Speak multiple texts in sequence, waiting for each to finish before starting the next.
   const speakChain = useCallback((items: ChainItem[]) => {

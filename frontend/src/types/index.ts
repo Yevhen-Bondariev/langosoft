@@ -2,6 +2,7 @@ export interface Book {
   id: number;
   title: string;
   author: string;
+  language: string; // BCP-47 code of the book's own language, e.g. "en", "it"
   chapterCount: number;
 }
 

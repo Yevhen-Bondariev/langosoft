@@ -182,7 +182,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const translationInputRef = useRef<HTMLInputElement>(null);
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate);
+  const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate, book.language);
 
   // Load progress on mount
   useEffect(() => {
@@ -250,7 +250,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const timer = setTimeout(() => {
       if (cancelled) return;
       setTranslationLoading(true);
-      api.words.translateParagraph(para.text, selectedLang.name)
+      api.words.translateParagraph(para.text, selectedLang.name, book.language)
         .then(r => { if (!cancelled) { translationCache.current.set(currentParagraphIndex, r.translation); setTranslationText(r.translation); } })
         .catch(() => { if (!cancelled) translationCache.current.set(currentParagraphIndex, ''); })
         .finally(() => { if (!cancelled) setTranslationLoading(false); });
@@ -968,7 +968,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           </div>
         ) : (
           /* Normal reading pane */
-          <div style={{ padding: '1rem' }}>
+          <div style={{ padding: '1rem' }} lang={book.language}>
             {isLoading ? (
               <div className="text-slate-500 text-center py-8">Loading...</div>
             ) : (

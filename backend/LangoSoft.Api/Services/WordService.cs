@@ -4,6 +4,15 @@ namespace LangoSoft.Api.Services;
 
 public class WordService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
 {
+    private static readonly Dictionary<string, string> LangNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["en"] = "English", ["it"] = "Italian", ["fr"] = "French", ["de"] = "German",
+        ["es"] = "Spanish", ["ru"] = "Russian", ["uk"] = "Ukrainian", ["pl"] = "Polish",
+        ["pt"] = "Portuguese", ["la"] = "Latin", ["el"] = "Greek", ["nl"] = "Dutch",
+        ["ar"] = "Arabic", ["zh"] = "Chinese", ["ja"] = "Japanese", ["ko"] = "Korean",
+        ["tr"] = "Turkish", ["he"] = "Hebrew",
+    };
+
     private string? ApiKey =>
         configuration["Groq:ApiKey"] is { Length: > 0 } k ? k
         : Environment.GetEnvironmentVariable("GROQ_API_KEY");
@@ -70,14 +79,15 @@ public class WordService(IHttpClientFactory httpClientFactory, IConfiguration co
         }
     }
 
-    public async Task<string> TranslateParagraphAsync(string text, string targetLanguage = "Ukrainian")
+    public async Task<string> TranslateParagraphAsync(string text, string targetLanguage = "Ukrainian", string sourceLanguageCode = "en")
     {
         var apiKey = ApiKey;
         if (string.IsNullOrWhiteSpace(apiKey)) return "";
 
+        var sourceName = LangNames.TryGetValue(sourceLanguageCode, out var n) ? n : "English";
         var snippet = text.Length > 1000 ? text[..1000] : text;
         var prompt =
-            $"Translate the following English literary text into {targetLanguage}. " +
+            $"Translate the following {sourceName} literary text into {targetLanguage}. " +
             "Preserve the tone, style and paragraph structure. " +
             "Return ONLY the translated text, no explanations, no quotes around it.\n\n" +
             snippet;

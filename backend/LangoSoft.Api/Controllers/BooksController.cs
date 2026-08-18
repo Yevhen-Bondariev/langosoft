@@ -14,7 +14,7 @@ public class BooksController(AppDbContext db, BookImportService importService) :
     public async Task<ActionResult<IEnumerable<BookDto>>> GetBooks()
     {
         var books = await db.Books
-            .Select(b => new BookDto(b.Id, b.Title, b.Author, b.Chapters.Count))
+            .Select(b => new BookDto(b.Id, b.Title, b.Author, b.Language, b.Chapters.Count))
             .ToListAsync();
         return Ok(books);
     }

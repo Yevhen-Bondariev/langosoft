@@ -11,7 +11,9 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         string Title, string Author, string Url, string? ChapterPattern,
         RegexOptions ChapterRegexOptions = RegexOptions.IgnoreCase | RegexOptions.Multiline,
         bool GroupByAct = false,
-        bool StripHtml = false);
+        bool StripHtml = false,
+        string Language = "en",
+        string GroupByActPattern = @"^ACT [IVX]+");
 
     private static readonly BookConfig[] BookCatalog =
     [
@@ -37,6 +39,15 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         new("Politics and the English Language", "George Orwell",
             "https://www.orwell.ru/library/essays/politics/english/e_polit",
             null, StripHtml: true),
+
+        // Italian original — cantos grouped under their cantica (INFERNO · CANTO I etc.)
+        new("La Divina Commedia", "Dante Alighieri",
+            "https://www.gutenberg.org/files/1012/1012-0.txt",
+            @"^(?:INFERNO|PURGATORIO|PARADISO|CANTO [IVXLCDM]+\.?)",
+            RegexOptions.Multiline,
+            GroupByAct: true,
+            Language: "it",
+            GroupByActPattern: @"^(?:INFERNO|PURGATORIO|PARADISO)"),
     ];
 
     public async Task ImportAllBooksAsync()
@@ -75,14 +86,14 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
             config.ChapterRegexOptions, filterEmpty: !config.GroupByAct);
         if (config.GroupByAct)
         {
-            sections = CombineActAndSceneTitles(sections);
+            sections = CombineActAndSceneTitles(sections, config.GroupByActPattern);
             sections = sections.Where(s => SplitParagraphs(s.Body).Count > 0).ToList();
             if (sections.Count == 0) sections.Add((config.Title, content));
         }
 
         // Build the full object graph in memory before touching the DB —
         // this way a failed download never leaves a half-imported book visible.
-        var book = new Book { Title = config.Title, Author = config.Author };
+        var book = new Book { Title = config.Title, Author = config.Author, Language = config.Language };
         int chapterNum = 0;
         foreach (var (title, body) in sections)
         {
@@ -107,9 +118,10 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
     // Prefix scene titles with their containing act: "ACT I · SCENE II".
     // Act-only sections (empty body between ACT and first SCENE) are dropped.
     internal static List<(string Title, string Body)> CombineActAndSceneTitles(
-        List<(string Title, string Body)> sections)
+        List<(string Title, string Body)> sections,
+        string actPattern = @"^ACT [IVX]+")
     {
-        var actRegex = new Regex(@"^ACT [IVX]+", RegexOptions.IgnoreCase);
+        var actRegex = new Regex(actPattern, RegexOptions.IgnoreCase);
         string currentAct = "";
         var result = new List<(string Title, string Body)>();
         foreach (var (title, body) in sections)
