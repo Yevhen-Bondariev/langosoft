@@ -139,6 +139,7 @@ interface Props {
   selectedVoice?: SpeechSynthesisVoice | null;
   selectedLang: LanguageOption;
   ttsRate?: number;
+  onRateToggle?: () => void;
 }
 
 interface AddFlashcardState {
@@ -149,7 +150,7 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9 }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -779,8 +780,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         analyzeGrammar();
         return;
       }
-      // ── t ── literary translation of current line
-      if (key === 't' || key === 'T') {
+      // ── l ── literary translation of current line
+      if (key === 'l' || key === 'L') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -800,6 +801,15 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             announceToNvda(r.translation);
           })
           .catch(() => speak('Translation unavailable', { lang: 'en' }));
+        return;
+      }
+      // ── s ── toggle speed between 1.0× and 1.5×
+      if (key === 's' || key === 'S') {
+        e.preventDefault();
+        const nextRate = ttsRate === 1.5 ? 1.0 : 1.5;
+        onRateToggle?.();
+        showStatus(`Speed: ${nextRate.toFixed(1)}×`);
+        speak(`Speed ${nextRate.toFixed(1)}`, { lang: 'en' });
         return;
       }
       // ── → ── enter input mode
@@ -827,7 +837,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     recallMode, recallDiff, recallHintLiterary, recallHintLiteral, selectedLang.code, selectedLang.name,
     retryRecall, explainRecall, enterRecall, announceToNvda,
     customQuestionOpen, customAnswer, submitCustomQuestion,
-    saveProgress, book.language,
+    saveProgress, book.language, ttsRate, onRateToggle, showStatus,
   ]);
 
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
@@ -1194,7 +1204,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             <span><kbd className="bg-slate-700 px-1 rounded">1</kbd>/<kbd className="bg-slate-700 px-1 rounded">2</kbd>/<kbd className="bg-slate-700 px-1 rounded">3</kbd> prev/this/next letter</span>
             <span><kbd className="bg-slate-700 px-1 rounded">4</kbd>/<kbd className="bg-slate-700 px-1 rounded">5</kbd>/<kbd className="bg-slate-700 px-1 rounded">6</kbd> prev/this/next word</span>
             <span><kbd className="bg-slate-700 px-1 rounded">7</kbd>/<kbd className="bg-slate-700 px-1 rounded">8</kbd>/<kbd className="bg-slate-700 px-1 rounded">9</kbd> prev/this/next line</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">t</kbd> gloss+translate · <kbd className="bg-slate-700 px-1 rounded">0</kbd> flashcard · <kbd className="bg-slate-700 px-1 rounded">f</kbd> search · <kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">l</kbd> translate · <kbd className="bg-slate-700 px-1 rounded">s</kbd> speed · <kbd className="bg-slate-700 px-1 rounded">0</kbd> flashcard · <kbd className="bg-slate-700 px-1 rounded">f</kbd> search · <kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
             <span><kbd className="bg-slate-700 px-1 rounded">[</kbd>/<kbd className="bg-slate-700 px-1 rounded">]</kbd> prev/next chapter · <kbd className="bg-slate-700 px-1 rounded">→</kbd> input mode · <kbd className="bg-slate-700 px-1 rounded">Ctrl</kbd> stop</span>
           </div>
         )}

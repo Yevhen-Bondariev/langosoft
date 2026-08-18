@@ -32,6 +32,14 @@ export default function App() {
     });
   }, []);
 
+  const toggleRate = useCallback(() => {
+    setTtsRate(prev => {
+      const next = prev === 1.5 ? 1.0 : 1.5;
+      localStorage.setItem('tts-rate', String(next));
+      return next;
+    });
+  }, []);
+
   const loadFlashcards = useCallback(async () => {
     try {
       const cards = await api.flashcards.list();
@@ -351,6 +359,7 @@ export default function App() {
             selectedVoice={selectedVoice}
             selectedLang={selectedLang}
             ttsRate={ttsRate}
+            onRateToggle={toggleRate}
           />
         )}
         {view === 'flashcards' && (
