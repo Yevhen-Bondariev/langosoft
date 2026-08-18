@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ReadingProgress> ReadingProgresses => Set<ReadingProgress>();
     public DbSet<ParagraphArchaismCache> ParagraphArchaismCaches => Set<ParagraphArchaismCache>();
     public DbSet<ParagraphGlossCache> ParagraphGlossCaches => Set<ParagraphGlossCache>();
+    public DbSet<FlashcardCategory> FlashcardCategories => Set<FlashcardCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

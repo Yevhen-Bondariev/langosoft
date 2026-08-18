@@ -1,4 +1,4 @@
-import type { Book, Chapter, Flashcard, Paragraph, ReadingProgress } from '../types';
+import type { Book, Category, Chapter, ChapterStat, Flashcard, Paragraph, ReadingProgress } from '../types';
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) || 'http://localhost:5000/api';
 
@@ -34,6 +34,7 @@ export const api = {
   flashcards: {
     list: () => req<Flashcard[]>('/flashcards'),
     due: () => req<Flashcard[]>('/flashcards/due'),
+    stats: () => req<ChapterStat[]>('/flashcards/stats'),
     create: (data: {
       word: string;
       context: string;
@@ -42,12 +43,19 @@ export const api = {
       bookId: number;
       chapterNumber: number;
       paragraphIndex: number;
+      categoryId?: number | null;
     }) => req<Flashcard>('/flashcards', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: number, data: { translation?: string; synonym?: string }) =>
+    update: (id: number, data: { translation?: string; synonym?: string; categoryId?: number | null }) =>
       req<Flashcard>(`/flashcards/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: number) => req<void>(`/flashcards/${id}`, { method: 'DELETE' }),
     review: (id: number, correct: boolean) =>
       req<Flashcard>(`/flashcards/${id}/review`, { method: 'POST', body: JSON.stringify({ correct }) }),
+  },
+  categories: {
+    list: () => req<Category[]>('/categories'),
+    create: (name: string, color = '#6366f1') =>
+      req<Category>('/categories', { method: 'POST', body: JSON.stringify({ name, color }) }),
+    delete: (id: number) => req<void>(`/categories/${id}`, { method: 'DELETE' }),
   },
   words: {
     translate: (word: string, context: string, targetLanguage: string) =>

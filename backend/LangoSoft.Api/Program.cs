@@ -89,6 +89,48 @@ using (var scope = app.Services.CreateScope())
           )
           """;
     await ctx.Database.ExecuteSqlRawAsync(createGlossCache);
+
+    // FlashcardCategories table (default categories: beautiful, weird, difficult)
+    var createCategories = isPostgres
+        ? """
+          CREATE TABLE IF NOT EXISTS "FlashcardCategories" (
+              "Id" serial PRIMARY KEY,
+              "Name" text NOT NULL,
+              "IsDefault" boolean NOT NULL DEFAULT false,
+              "Color" text NOT NULL DEFAULT '#6366f1'
+          )
+          """
+        : """
+          CREATE TABLE IF NOT EXISTS "FlashcardCategories" (
+              "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
+              "Name" TEXT NOT NULL,
+              "IsDefault" INTEGER NOT NULL DEFAULT 0,
+              "Color" TEXT NOT NULL DEFAULT '#6366f1'
+          )
+          """;
+    await ctx.Database.ExecuteSqlRawAsync(createCategories);
+
+    // CategoryId column on Flashcards (nullable FK — silently ignored if already present)
+    try
+    {
+        var addCategoryCol = isPostgres
+            ? """ALTER TABLE "Flashcards" ADD COLUMN IF NOT EXISTS "CategoryId" INTEGER NULL REFERENCES "FlashcardCategories"("Id") ON DELETE SET NULL"""
+            : """ALTER TABLE "Flashcards" ADD COLUMN "CategoryId" INTEGER NULL REFERENCES "FlashcardCategories"("Id") ON DELETE SET NULL""";
+        await ctx.Database.ExecuteSqlRawAsync(addCategoryCol);
+    }
+    catch { /* column already exists */ }
+
+    // Seed default categories once
+    var hasDefaults = await ctx.FlashcardCategories.AnyAsync(c => c.IsDefault);
+    if (!hasDefaults)
+    {
+        ctx.FlashcardCategories.AddRange(
+            new LangoSoft.Api.Models.FlashcardCategory { Name = "beautiful", IsDefault = true, Color = "#f472b6" },
+            new LangoSoft.Api.Models.FlashcardCategory { Name = "weird",     IsDefault = true, Color = "#a855f7" },
+            new LangoSoft.Api.Models.FlashcardCategory { Name = "difficult", IsDefault = true, Color = "#f59e0b" }
+        );
+        await ctx.SaveChangesAsync();
+    }
 }
 
 // Book import downloads from Gutenberg — run in background so the server

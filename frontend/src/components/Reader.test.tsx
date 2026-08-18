@@ -27,6 +27,9 @@ vi.mock('../services/api', () => ({
     grammar: {
       analyze: vi.fn().mockResolvedValue({ tenses: [] }),
     },
+    paragraphs: {
+      archaisms: vi.fn().mockResolvedValue({ archaisms: '{}' }),
+    },
   },
 }));
 
@@ -72,7 +75,7 @@ async function renderReader() {
       chapters={CHAPTERS}
       chapterNum={0}
       onChapterChange={vi.fn()}
-      onFlashcardsChange={vi.fn()}
+      onFlashcardsChange={vi.fn()} categories={[]} onCategoriesChange={vi.fn()}
       showPhonemeHints={false}
       selectedVoice={null}
       selectedLang={LANG}
@@ -100,8 +103,8 @@ describe('Reader — r key opens recall panel', () => {
 
     await user.keyboard('r');
 
-    // Recall panel is an inline pane; check for its distinctive textarea
-    expect(screen.getByPlaceholderText('Type from memory…')).toBeTruthy();
+    // Default mode is translation (see original, type translation) — LANG.label = 'Українська'
+    expect(screen.getByPlaceholderText('Type the Українська translation…')).toBeTruthy();
   });
 
   it('does NOT open the recall panel when paragraphs have not loaded', async () => {
@@ -115,7 +118,7 @@ describe('Reader — r key opens recall panel', () => {
         chapters={CHAPTERS}
         chapterNum={0}
         onChapterChange={vi.fn()}
-        onFlashcardsChange={vi.fn()}
+        onFlashcardsChange={vi.fn()} categories={[]} onCategoriesChange={vi.fn()}
         showPhonemeHints={false}
         selectedVoice={null}
         selectedLang={LANG}
@@ -125,7 +128,7 @@ describe('Reader — r key opens recall panel', () => {
 
     await user.keyboard('r');
 
-    expect(screen.queryByPlaceholderText('Type from memory…')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type the Українська translation…')).toBeNull();
   });
 
   it('does not enter recall mode when r is pressed while still loading', async () => {
@@ -139,7 +142,7 @@ describe('Reader — r key opens recall panel', () => {
         chapters={CHAPTERS}
         chapterNum={0}
         onChapterChange={vi.fn()}
-        onFlashcardsChange={vi.fn()}
+        onFlashcardsChange={vi.fn()} categories={[]} onCategoriesChange={vi.fn()}
         showPhonemeHints={false}
         selectedVoice={null}
         selectedLang={LANG}
@@ -150,7 +153,7 @@ describe('Reader — r key opens recall panel', () => {
     await user.keyboard('r');
 
     // enterRecall() bails out silently when paragraphs are empty — no panel, no status
-    expect(screen.queryByPlaceholderText('Type from memory…')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type the Українська translation…')).toBeNull();
   });
 
   it('recall panel opens when r is pressed on a loaded paragraph', async () => {
@@ -160,7 +163,7 @@ describe('Reader — r key opens recall panel', () => {
     await user.keyboard('r');
 
     // Panel is present — textarea is the unique marker
-    expect(screen.getByPlaceholderText('Type from memory…')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Type the Українська translation…')).toBeTruthy();
   });
 
   it('closes the recall panel on ArrowLeft', async () => {
@@ -168,11 +171,11 @@ describe('Reader — r key opens recall panel', () => {
     await renderReader();
 
     await user.keyboard('r');
-    expect(screen.getByPlaceholderText('Type from memory…')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Type the Українська translation…')).toBeTruthy();
 
     // ArrowLeft exits recall mode (not Escape — the component maps ← to exit)
     await user.keyboard('{ArrowLeft}');
-    expect(screen.queryByPlaceholderText('Type from memory…')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type the Українська translation…')).toBeNull();
   });
 });
 
@@ -205,7 +208,7 @@ async function renderItalianReader() {
       chapters={ITALIAN_CHAPTERS}
       chapterNum={0}
       onChapterChange={vi.fn()}
-      onFlashcardsChange={vi.fn()}
+      onFlashcardsChange={vi.fn()} categories={[]} onCategoriesChange={vi.fn()}
       showPhonemeHints={false}
       selectedVoice={null}
       selectedLang={LANG}
@@ -242,7 +245,7 @@ describe('Reader — Italian gloss (4/5/6 keys)', () => {
         chapters={CHAPTERS}
         chapterNum={0}
         onChapterChange={vi.fn()}
-        onFlashcardsChange={vi.fn()}
+        onFlashcardsChange={vi.fn()} categories={[]} onCategoriesChange={vi.fn()}
         showPhonemeHints={false}
         selectedVoice={null}
         selectedLang={LANG}

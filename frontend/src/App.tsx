@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AppView, Book, Chapter, Flashcard } from './types';
+import type { AppView, Book, Category, Chapter, Flashcard } from './types';
 import { api } from './services/api';
 import Reader from './components/Reader';
 import Flashcards from './components/Flashcards';
@@ -17,6 +17,7 @@ export default function App() {
   const [book, setBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [currentChapterNum, setCurrentChapterNum] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,8 +51,12 @@ export default function App() {
 
   const loadFlashcards = useCallback(async () => {
     try {
-      const cards = await api.flashcards.list();
+      const [cards, cats] = await Promise.all([
+        api.flashcards.list(),
+        api.categories.list(),
+      ]);
       setFlashcards(cards);
+      setCategories(cats);
     } catch { /* silently fail */ }
   }, []);
 
@@ -383,6 +388,8 @@ export default function App() {
             chapterNum={currentChapterNum}
             onChapterChange={setCurrentChapterNum}
             onFlashcardsChange={loadFlashcards}
+            categories={categories}
+            onCategoriesChange={setCategories}
             showPhonemeHints={showPhonemeHints}
             selectedVoice={selectedVoice}
             selectedLang={selectedLang}
@@ -400,7 +407,7 @@ export default function App() {
             selectedLangCode={selectedLang.code}
           />
         )}
-        {view === 'words' && <WordList flashcards={flashcards} onUpdate={loadFlashcards} />}
+        {view === 'words' && <WordList flashcards={flashcards} categories={categories} onUpdate={loadFlashcards} />}
         {view === 'essay' && <Essay book={book} chapters={chapters} currentChapterNum={currentChapterNum} />}
       </main>
     </div>

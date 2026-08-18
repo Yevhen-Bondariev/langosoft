@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Book, Chapter, Paragraph } from '../types';
+import type { Book, Category, Chapter, Paragraph } from '../types';
 import { api } from '../services/api';
+import CategoryPicker from './CategoryPicker';
 import { tokenizeParagraph, getWordTokens } from '../utils/tokenize';
 import { useTTS } from '../hooks/useTTS';
 import { phonemeHints, type PhonemeHint } from '../utils/phonemes';
@@ -152,6 +153,8 @@ interface Props {
   chapterNum: number;
   onChapterChange: (num: number) => void;
   onFlashcardsChange: () => void;
+  categories: Category[];
+  onCategoriesChange: (cats: Category[]) => void;
   showPhonemeHints: boolean;
   selectedVoice?: SpeechSynthesisVoice | null;
   selectedLang: LanguageOption;
@@ -170,7 +173,7 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -182,6 +185,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [addState, setAddState] = useState<AddFlashcardState | null>(null);
   const [addTranslation, setAddTranslation] = useState('');
   const [addSynonym, setAddSynonym] = useState('');
+  const [addCategoryId, setAddCategoryId] = useState<number | null>(null);
   const [addLoading, setAddLoading] = useState(false);
   const [addTranslationError, setAddTranslationError] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
@@ -621,6 +625,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     setAddState({ word, context, wordIndex: idx, paragraphIndex: currentParagraphIndex, chapterNumber: chapterNum });
     setAddTranslation('');
     setAddSynonym('');
+    setAddCategoryId(null);
     setAddTranslationError(false);
 
     // Speak the word immediately
@@ -666,6 +671,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         bookId: book.id,
         chapterNumber: addState.chapterNumber,
         paragraphIndex: addState.paragraphIndex,
+        categoryId: addCategoryId,
       });
       onFlashcardsChange();
       showStatus(`"${addState.word}" saved`);
@@ -675,7 +681,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     }
     setAddState(null);
     setTimeout(() => currentWordRef.current?.focus(), 0);
-  }, [addState, addTranslation, addSynonym, book.id, onFlashcardsChange, showStatus, speak]);
+  }, [addState, addTranslation, addSynonym, addCategoryId, book.id, onFlashcardsChange, showStatus, speak]);
 
   // Search matches within current paragraph
   const searchMatches = useMemo(() => {
@@ -1968,6 +1974,17 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                     }}
                   />
                 </div>
+              </div>
+            )}
+
+            {!addLoading && (
+              <div className="mt-3">
+                <CategoryPicker
+                  categories={categories}
+                  selectedId={addCategoryId}
+                  onChange={setAddCategoryId}
+                  onCategoryCreated={cat => onCategoriesChange([...categories, cat])}
+                />
               </div>
             )}
 

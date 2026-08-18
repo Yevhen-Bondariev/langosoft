@@ -14,4 +14,6 @@ public class Flashcard
     public int Repetitions { get; set; } = 0;
     public DateTime NextReview { get; set; } = DateTime.UtcNow;
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+    public int? CategoryId { get; set; }
+    public FlashcardCategory? Category { get; set; }
 }

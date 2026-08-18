@@ -21,6 +21,21 @@ export interface Paragraph {
   text: string;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+  isDefault: boolean;
+  color: string;
+}
+
+export interface ChapterStat {
+  bookId: number;
+  bookTitle: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  count: number;
+}
+
 export interface Flashcard {
   id: number;
   word: string;
@@ -35,6 +50,9 @@ export interface Flashcard {
   repetitions: number;
   nextReview: string;
   addedAt: string;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  categoryColor?: string | null;
 }
 
 export interface ReadingProgress {
