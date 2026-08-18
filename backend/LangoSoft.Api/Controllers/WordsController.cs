@@ -21,7 +21,7 @@ public class WordsController(WordService wordService) : ControllerBase
         return Ok(new TranslateResponse(translation, synonym));
     }
 
-    public record TranslateParagraphRequest(string Text, string? TargetLanguage, string? SourceLanguageCode);
+    public record TranslateParagraphRequest(string Text, string? TargetLanguage, string? SourceLanguageCode, bool Literal = false);
     public record TranslateParagraphResponse(string Translation);
 
     [HttpPost("translate-paragraph")]
@@ -31,8 +31,34 @@ public class WordsController(WordService wordService) : ControllerBase
             return BadRequest("text is required");
         var lang = string.IsNullOrWhiteSpace(req.TargetLanguage) ? "Ukrainian" : req.TargetLanguage;
         var src = string.IsNullOrWhiteSpace(req.SourceLanguageCode) ? "en" : req.SourceLanguageCode;
-        var translation = await wordService.TranslateParagraphAsync(req.Text, lang, src);
+        var translation = await wordService.TranslateParagraphAsync(req.Text, lang, src, req.Literal);
         return Ok(new TranslateParagraphResponse(translation));
+    }
+
+    public record GlossRequest(string Text, string? TargetLanguage, string? SourceLanguageCode);
+    public record GlossResponse(string Gloss);
+
+    [HttpPost("gloss")]
+    public async Task<ActionResult<GlossResponse>> Gloss([FromBody] GlossRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Text))
+            return BadRequest("text is required");
+        var lang = string.IsNullOrWhiteSpace(req.TargetLanguage) ? "English" : req.TargetLanguage;
+        var src = string.IsNullOrWhiteSpace(req.SourceLanguageCode) ? "en" : req.SourceLanguageCode;
+        var gloss = await wordService.GlossAsync(req.Text, lang, src);
+        return Ok(new GlossResponse(gloss));
+    }
+
+    public record CustomExplainRequest(string Original, string? Literary, string? Literal, string Question);
+    public record CustomExplainResponse(string Answer);
+
+    [HttpPost("custom-explain")]
+    public async Task<ActionResult<CustomExplainResponse>> CustomExplain([FromBody] CustomExplainRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Original) || string.IsNullOrWhiteSpace(req.Question))
+            return BadRequest("original and question are required");
+        var answer = await wordService.CustomExplainAsync(req.Original, req.Literary, req.Literal, req.Question);
+        return Ok(new CustomExplainResponse(answer));
     }
 
     public record RecallExplainRequest(string Original, string? Typed);

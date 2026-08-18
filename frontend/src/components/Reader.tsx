@@ -6,7 +6,17 @@ import { useTTS } from '../hooks/useTTS';
 import { phonemeHints, type PhonemeHint } from '../utils/phonemes';
 import type { LanguageOption } from '../hooks/useLanguagePreference';
 import { grammarRules } from '../utils/grammarRules';
-import { sentenceAtWord, wordDiff, recallScore, type DiffSegment } from '../utils/recall';
+import { lineAtWord, lineIndexAtWord, firstWordOfLine, wordDiff, recallScore, type DiffSegment } from '../utils/recall';
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
+    .replace(/_{1,3}([^_\n]+)_{1,3}/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .trim();
+}
 
 function playTone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.25) {
   try {
@@ -168,12 +178,21 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [recallExplanation, setRecallExplanation] = useState<string | null>(null);
   const [recallExplainLoading, setRecallExplainLoading] = useState(false);
   const recallTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const customQuestionRef = useRef<HTMLTextAreaElement>(null);
+  const [customQuestionOpen, setCustomQuestionOpen] = useState(false);
+  const [customQuestion, setCustomQuestion] = useState('');
+  const [customAnswer, setCustomAnswer] = useState<string | null>(null);
+  const [customAnswerLoading, setCustomAnswerLoading] = useState(false);
 
-  const [translationText, setTranslationText] = useState('');
-  const [translationLoading, setTranslationLoading] = useState(false);
+  const lineLiteraryCache = useRef<Map<string, string>>(new Map());
+  // Per-word translation cache: "${line}::${langName}" → Map<lowercase-word, translation>
+  const glossWordCache = useRef<Map<string, Map<string, string>>>(new Map());
+
+  // Recall-mode hint: translations of the specific line being recalled (not the full paragraph)
+  const [recallHintLiterary, setRecallHintLiterary] = useState('');
+  const [recallHintLiteral, setRecallHintLiteral] = useState('');
+  const [recallHintLoading, setRecallHintLoading] = useState(false);
   const [nvdaAnnounce, setNvdaAnnounce] = useState('');
-  const translationCache = useRef<Map<number, string>>(new Map());
-
   // Pre-tokenize all paragraphs once when the chapter loads (not on every keystroke)
   const allTokens = useMemo(() => paragraphs.map(p => tokenizeParagraph(p.text)), [paragraphs]);
   const tokens = allTokens[currentParagraphIndex] ?? [];
@@ -231,32 +250,33 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     currentParaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [currentParagraphIndex]);
 
-  // Clear translation cache when chapter or language changes
+  // Pre-fetch English word-by-word gloss for the whole current stanza/paragraph
+  // One Groq call per stanza covers all words in all three verse lines at once.
   useEffect(() => {
-    translationCache.current.clear();
-    setTranslationText('');
-  }, [chapterNum, selectedLang.name]);
-
-  // Fetch translation of current paragraph (debounced 600ms so fast navigation doesn't spam Groq)
-  useEffect(() => {
+    if (book.language === 'en') return;
     const para = paragraphs[currentParagraphIndex];
     if (!para) return;
-
-    const cached = translationCache.current.get(currentParagraphIndex);
-    if (cached !== undefined) { setTranslationText(cached); return; }
-
-    let cancelled = false;
-    setTranslationText('');
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setTranslationLoading(true);
-      api.words.translateParagraph(para.text, selectedLang.name, book.language)
-        .then(r => { if (!cancelled) { translationCache.current.set(currentParagraphIndex, r.translation); setTranslationText(r.translation); } })
-        .catch(() => { if (!cancelled) translationCache.current.set(currentParagraphIndex, ''); })
-        .finally(() => { if (!cancelled) setTranslationLoading(false); });
-    }, 600);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [currentParagraphIndex, paragraphs, selectedLang.name]);
+    const cacheKey = `${currentParagraphIndex}::en`;
+    if (glossWordCache.current.has(cacheKey)) return;
+    api.words.gloss(para.text, 'English', book.language)
+      .then(r => {
+        const map = new Map<string, string>();
+        try {
+          const obj = JSON.parse(r.gloss) as Record<string, string>;
+          for (const [word, tr] of Object.entries(obj)) {
+            if (typeof tr === 'string') map.set(word.toLowerCase(), tr);
+          }
+        } catch {
+          // fallback: old "word — tr; ..." format
+          r.gloss.split(';').forEach(entry => {
+            const dash = entry.search(/\s[—–]\s/);
+            if (dash > 0) map.set(entry.slice(0, dash).trim().toLowerCase(), entry.slice(dash + 3).trim());
+          });
+        }
+        if (map.size > 0) glossWordCache.current.set(cacheKey, map);
+      })
+      .catch(() => {});
+  }, [currentParagraphIndex, paragraphs, book.language]);
 
   const wordTokens = getWordTokens(tokens);
   const totalChapters = chapters.length;
@@ -305,9 +325,15 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     if (wordTokens.length === 0) return;
     const clamped = Math.max(0, Math.min(wordIdx, wordTokens.length - 1));
     setCurrentWordIndex(clamped);
-    const word = wordTokens[clamped]?.rawWord || wordTokens[clamped]?.text || '';
+    const token = wordTokens[clamped];
+    const word = token?.rawWord || token?.text || '';
     if (word) {
+      const tr = glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(word.toLowerCase()) ?? '';
       speak(word);
+      if (tr) {
+        const delay = Math.max(700, Math.round(word.length * 110 / ttsRate));
+        setTimeout(() => speak(tr, { lang: 'en' }), delay);
+      }
       if (showPhonemeHints) {
         const hint = phonemeHints[word.toLowerCase()];
         setCurrentHint(hint ?? null);
@@ -317,7 +343,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       }
     }
     saveProgress(chapterNum, currentParagraphIndex, clamped);
-  }, [wordTokens, speak, chapterNum, currentParagraphIndex, saveProgress, showPhonemeHints]);
+  }, [wordTokens, speak, ttsRate, chapterNum, currentParagraphIndex, saveProgress, showPhonemeHints]);
 
   const analyzeGrammar = useCallback(async () => {
     // Toggle off if already showing for this paragraph
@@ -351,18 +377,49 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     }
   }, [grammarTenses, paragraphs, currentParagraphIndex]);
 
+  const submitCustomQuestion = useCallback(async () => {
+    if (!customQuestion.trim()) return;
+    setCustomAnswerLoading(true);
+    try {
+      const res = await api.words.customExplain(recallSentence, recallHintLiterary, recallHintLiteral, customQuestion);
+      setCustomAnswer(stripMarkdown(res.answer || '') || '(no answer)');
+    } catch {
+      setCustomAnswer('(unavailable — check API key)');
+    } finally {
+      setCustomAnswerLoading(false);
+    }
+  }, [customQuestion, recallSentence, recallHintLiterary, recallHintLiteral]);
+
   const enterRecall = useCallback(() => {
     const para = paragraphs[currentParagraphIndex];
     if (!para) return;
-    const sentence = sentenceAtWord(para.text, currentWordIndex);
+    const sentence = lineAtWord(para.text, currentWordIndex);
     if (!sentence) return;
     setRecallSentence(sentence);
     setRecallInput('');
     setRecallDiff(null);
     setRecallExplanation(null);
+    setCustomQuestionOpen(false);
+    setCustomQuestion('');
+    setCustomAnswer(null);
+    setRecallHintLiterary('');
+    setRecallHintLiteral('');
     setRecallMode(true);
     setTimeout(() => recallTextareaRef.current?.focus(), 50);
-  }, [paragraphs, currentParagraphIndex, currentWordIndex]);
+    setRecallHintLoading(true);
+    const lineCacheKey = `${sentence}::${selectedLang.name}`;
+    const cachedLiterary = lineLiteraryCache.current.get(lineCacheKey);
+    Promise.all([
+      cachedLiterary !== undefined
+        ? Promise.resolve(cachedLiterary)
+        : api.words.translateParagraph(sentence, selectedLang.name, book.language, false).then(r => r.translation),
+      api.words.translateParagraph(sentence, selectedLang.name, book.language, true),
+    ]).then(([literary, litrl]) => {
+      lineLiteraryCache.current.set(lineCacheKey, literary);
+      setRecallHintLiterary(literary);
+      setRecallHintLiteral(litrl.translation);
+    }).catch(() => {}).finally(() => setRecallHintLoading(false));
+  }, [paragraphs, currentParagraphIndex, currentWordIndex, selectedLang.name, book.language]);
 
   const submitRecall = useCallback(() => {
     if (!recallInput.trim()) return;
@@ -405,8 +462,8 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const readCurrentLine = useCallback(() => {
     const para = paragraphs[currentParagraphIndex];
     if (!para) return;
-    const sentence = sentenceAtWord(para.text, currentWordIndex);
-    speak(sentence || para.text);
+    const line = lineAtWord(para.text, currentWordIndex);
+    speak(line || para.text);
   }, [paragraphs, currentParagraphIndex, currentWordIndex, speak]);
 
 const openAddFlashcard = useCallback((wordIdx?: number) => {
@@ -489,15 +546,37 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         // ← exits input mode (only when not typing in textarea)
         if (e.key === 'ArrowLeft' && !inInput) {
           setRecallMode(false); setRecallDiff(null); setRecallInput('');
+          setCustomQuestionOpen(false); setCustomQuestion(''); setCustomAnswer(null);
           e.preventDefault(); return;
         }
-        // 8 = hear Ukrainian translation (Web Speech + NVDA aria-live fallback)
+        // 8 = hear literary translation of current line
         if ((e.key === '8' || e.code === 'Numpad8') && !inInput) {
-          if (translationText) { speak(translationText, { lang: selectedLang.code }); announceToNvda(translationText); }
+          const t = recallHintLiterary || recallHintLiteral;
+          if (t) { speak(t, { lang: selectedLang.code }); announceToNvda(t); }
           e.preventDefault(); return;
         }
-        // Enter after result = retry
-        if (e.key === 'Enter' && !inInput && recallDiff !== null) {
+        // 5 = hear literal translation of current line
+        if ((e.key === '5' || e.code === 'Numpad5') && !inInput) {
+          if (recallHintLiteral) { speak(recallHintLiteral, { lang: selectedLang.code }); announceToNvda(recallHintLiteral); }
+          e.preventDefault(); return;
+        }
+        // 0 = toggle custom question panel
+        if ((e.key === '0' || e.code === 'Numpad0') && !inInput) {
+          setCustomQuestionOpen(open => {
+            const next = !open;
+            if (next) setTimeout(() => customQuestionRef.current?.focus(), 50);
+            else setTimeout(() => recallTextareaRef.current?.focus(), 50);
+            return next;
+          });
+          e.preventDefault(); return;
+        }
+        // 2 = hear custom answer (always English)
+        if ((e.key === '2' || e.code === 'Numpad2') && !inInput) {
+          if (customAnswer) speak(customAnswer, { lang: 'en' });
+          e.preventDefault(); return;
+        }
+        // Enter / r after result = retry
+        if ((e.key === 'Enter' || e.key === 'r' || e.key === 'R') && !inInput && recallDiff !== null) {
           retryRecall(); e.preventDefault(); return;
         }
         // e after result = explain
@@ -590,13 +669,18 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         }
         return;
       }
-      // ── 5 / Numpad5 ── current word
+      // ── 5 / Numpad5 ── current word + translation
       if (key === '5' || code === 'Numpad5') {
         e.preventDefault();
         const token = wordTokens[currentWordIndex];
         if (token) {
           const word = token.rawWord || token.text;
+          const tr5 = glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(word.toLowerCase()) ?? '';
           speak(word);
+          if (tr5) {
+            const delay5 = Math.max(700, Math.round(word.length * 110 / ttsRate));
+            setTimeout(() => speak(tr5, { lang: 'en' }), delay5);
+          }
           if (showPhonemeHints) {
             const hint = phonemeHints[word.toLowerCase()];
             if (hint) setTimeout(() => speak(`Native speakers say: ${hint.audioHint}. ${hint.tip}`), 950);
@@ -614,10 +698,25 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         }
         return;
       }
-      // ── 7 / Numpad7 ── previous line (paragraph)
+      // ── 7 / Numpad7 ── previous verse line (poetry) / previous paragraph (prose)
       if (key === '7' || code === 'Numpad7') {
         e.preventDefault();
-        goToParagraph(currentParagraphIndex - 1, true);
+        const para7 = paragraphs[currentParagraphIndex];
+        if (para7?.text.includes('\n')) {
+          const { lineIndex } = lineIndexAtWord(para7.text, currentWordIndex);
+          if (lineIndex > 0) {
+            const newIdx = firstWordOfLine(para7.text, lineIndex - 1);
+            setCurrentWordIndex(newIdx);
+            saveProgress(chapterNum, currentParagraphIndex, newIdx);
+            speak(lineAtWord(para7.text, newIdx));
+          } else {
+            const prevPara = paragraphs[currentParagraphIndex - 1];
+            goToParagraph(currentParagraphIndex - 1, false);
+            if (prevPara) speak(lineAtWord(prevPara.text, 0));
+          }
+        } else {
+          goToParagraph(currentParagraphIndex - 1, true);
+        }
         return;
       }
       // ── 8 / Numpad8 ── current sentence (line)
@@ -626,10 +725,25 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         readCurrentLine();
         return;
       }
-      // ── 9 / Numpad9 ── next line (paragraph)
+      // ── 9 / Numpad9 ── next verse line (poetry) / next paragraph (prose)
       if (key === '9' || code === 'Numpad9') {
         e.preventDefault();
-        goToParagraph(currentParagraphIndex + 1, true);
+        const para9 = paragraphs[currentParagraphIndex];
+        if (para9?.text.includes('\n')) {
+          const { lineIndex, totalLines } = lineIndexAtWord(para9.text, currentWordIndex);
+          if (lineIndex < totalLines - 1) {
+            const newIdx = firstWordOfLine(para9.text, lineIndex + 1);
+            setCurrentWordIndex(newIdx);
+            saveProgress(chapterNum, currentParagraphIndex, newIdx);
+            speak(lineAtWord(para9.text, newIdx));
+          } else {
+            const nextPara = paragraphs[currentParagraphIndex + 1];
+            goToParagraph(currentParagraphIndex + 1, false);
+            if (nextPara) speak(lineAtWord(nextPara.text, 0));
+          }
+        } else {
+          goToParagraph(currentParagraphIndex + 1, true);
+        }
         return;
       }
       // ── 0 / Numpad0 ── add flashcard
@@ -665,6 +779,29 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         analyzeGrammar();
         return;
       }
+      // ── t ── literary translation of current line
+      if (key === 't' || key === 'T') {
+        e.preventDefault();
+        const para = paragraphs[currentParagraphIndex];
+        if (!para) return;
+        const line = lineAtWord(para.text, currentWordIndex);
+        if (!line) return;
+        const cacheKey = `${line}::${selectedLang.name}`;
+        const cached = lineLiteraryCache.current.get(cacheKey);
+        if (cached !== undefined) {
+          speak(cached, { lang: selectedLang.code });
+          announceToNvda(cached);
+          return;
+        }
+        api.words.translateParagraph(line, selectedLang.name, book.language, false)
+          .then(r => {
+            lineLiteraryCache.current.set(cacheKey, r.translation);
+            speak(r.translation, { lang: selectedLang.code });
+            announceToNvda(r.translation);
+          })
+          .catch(() => speak('Translation unavailable', { lang: 'en' }));
+        return;
+      }
       // ── → ── enter input mode
       if (e.key === 'ArrowRight') {
         e.preventDefault();
@@ -687,8 +824,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     wordTokens, chapterNum, showPhonemeHints,
     readCurrentLine, goToWord, goToParagraph, goToChapter,
     openAddFlashcard, submitFlashcard, speak, stop, analyzeGrammar,
-    recallMode, recallDiff, translationText, selectedLang.code,
+    recallMode, recallDiff, recallHintLiterary, recallHintLiteral, selectedLang.code, selectedLang.name,
     retryRecall, explainRecall, enterRecall, announceToNvda,
+    customQuestionOpen, customAnswer, submitCustomQuestion,
+    saveProgress, book.language,
   ]);
 
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
@@ -704,6 +843,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             ? 'bg-slate-800 border-l-4 border-amber-500'
             : 'bg-transparent hover:bg-slate-900 border-l-4 border-transparent'
         }`}
+        style={para.text.includes('\n') ? { whiteSpace: 'pre-line' } : undefined}
         onClick={() => {
           setCurrentParagraphIndex(paraIdx);
           setCurrentWordIndex(0);
@@ -782,7 +922,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           <span className="text-amber-400 font-semibold text-sm">
             {currentChapter?.title || `Chapter ${chapterNum}`}
           </span>
-          <span className="text-slate-500 text-xs ml-2">{chapterNum + 1} / {totalChapters}</span>
         </div>
         <button
           onClick={() => goToChapter(chapterNum + 1)}
@@ -796,7 +935,17 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
 
       {/* Progress indicator */}
       <div className="px-4 py-1.5 bg-slate-950 shrink-0 flex items-center gap-4 text-xs text-slate-500">
-        <span>Para {currentParagraphIndex + 1}/{paragraphs.length}</span>
+        {(() => {
+          const para = paragraphs[currentParagraphIndex];
+          if (para?.text.includes('\n')) {
+            const { lineIndex, totalLines } = lineIndexAtWord(para.text, currentWordIndex);
+            return <>
+              <span>Stanza {currentParagraphIndex + 1}/{paragraphs.length}</span>
+              <span className="text-slate-400">Line {lineIndex + 1}/{totalLines}</span>
+            </>;
+          }
+          return <span>Para {currentParagraphIndex + 1}/{paragraphs.length}</span>;
+        })()}
         <span>Word {currentWordIndex + 1}/{wordTokens.length || 1}</span>
         {currentWordLetters.length > 0 && (
           <span className="font-mono text-slate-600">
@@ -910,19 +1059,65 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         {recallMode ? (
           /* Input mode — replaces the reading pane */
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1.25rem', gap: '1rem' }}>
-            {/* Ukrainian hint at top */}
+            {/* Translation hints at top — literary + literal */}
             <div style={{ background: '#1e293b', borderRadius: '0.5rem', padding: '1rem', flexShrink: 0 }}>
-              <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+              <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
                 {selectedLang.label} — press 8 to hear
               </p>
-              {translationLoading ? (
-                <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Translating…</p>
-              ) : translationText ? (
-                <p style={{ color: '#e2e8f0', fontSize: '1.1rem', lineHeight: 1.75 }} aria-live="polite">{translationText}</p>
+              {/* Literary */}
+              <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literary</p>
+              {recallHintLoading ? (
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Translating…</p>
+              ) : recallHintLiterary ? (
+                <p style={{ color: '#e2e8f0', fontSize: '1.05rem', lineHeight: 1.7, marginBottom: '0.75rem' }} aria-live="polite">{recallHintLiterary}</p>
               ) : (
-                <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Translation unavailable</p>
+                <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Unavailable</p>
               )}
+              {/* Literal */}
+              <div style={{ borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
+                <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literal</p>
+                {recallHintLoading ? (
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Translating…</p>
+                ) : recallHintLiteral ? (
+                  <p style={{ color: '#cbd5e1', fontSize: '1.0rem', lineHeight: 1.65, fontStyle: 'italic' }}>{recallHintLiteral}</p>
+                ) : (
+                  <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Unavailable</p>
+                )}
+              </div>
             </div>
+
+            {/* Custom question panel */}
+            {customQuestionOpen && (
+              <div style={{ background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '0.5rem', padding: '1rem', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <p style={{ color: '#818cf8', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Custom question — Enter to send · 8 literary · 5 literal · 2 hear answer · 0 close
+                </p>
+                <textarea
+                  ref={customQuestionRef}
+                  value={customQuestion}
+                  onChange={e => setCustomQuestion(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitCustomQuestion(); }
+                    if (e.key === 'Escape') { e.preventDefault(); setCustomQuestionOpen(false); setTimeout(() => recallTextareaRef.current?.focus(), 50); }
+                    if (e.key === '8') { e.preventDefault(); const t = recallHintLiterary || recallHintLiteral; if (t) { speak(t, { lang: selectedLang.code }); announceToNvda(t); } }
+                    if (e.key === '5') { e.preventDefault(); if (recallHintLiteral) { speak(recallHintLiteral, { lang: selectedLang.code }); announceToNvda(recallHintLiteral); } }
+                    if (e.key === '2') { e.preventDefault(); if (customAnswer) speak(customAnswer, { lang: 'en' }); }
+                  }}
+                  rows={2}
+                  placeholder="Ask anything about this sentence…"
+                  style={{ background: '#1e1035', border: '1px solid #4338ca', borderRadius: '0.375rem', padding: '0.5rem 0.75rem', color: '#e0e7ff', fontSize: '0.95rem', resize: 'none', outline: 'none' }}
+                  aria-label="Custom question about this sentence"
+                />
+                {customAnswerLoading && (
+                  <p style={{ color: '#818cf8', fontSize: '0.85rem' }} aria-live="polite">Thinking…</p>
+                )}
+                {customAnswer && !customAnswerLoading && (
+                  <div style={{ background: '#1e1035', borderRadius: '0.375rem', padding: '0.75rem', borderLeft: '3px solid #6366f1' }}>
+                    <p style={{ color: '#c7d2fe', fontSize: '0.95rem', lineHeight: 1.65, whiteSpace: 'pre-line' }} aria-live="polite">{customAnswer}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {recallDiff === null ? (
               /* Typing area */
@@ -937,7 +1132,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onChange={e => setRecallInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitRecall(); }
-                    if (e.key === '8') { e.preventDefault(); if (translationText) { speak(translationText, { lang: selectedLang.code }); announceToNvda(translationText); } }
+                    if (e.key === '8') { e.preventDefault(); const t = recallHintLiterary || recallHintLiteral; if (t) { speak(t, { lang: selectedLang.code }); announceToNvda(t); } }
+                    if (e.key === '5') { e.preventDefault(); if (recallHintLiteral) { speak(recallHintLiteral, { lang: selectedLang.code }); announceToNvda(recallHintLiteral); } }
+                    if (e.key === '2') { e.preventDefault(); if (customAnswer) speak(customAnswer, { lang: 'en' }); }
+                    if (e.key === '0') { e.preventDefault(); setCustomQuestionOpen(open => { const next = !open; if (next) setTimeout(() => customQuestionRef.current?.focus(), 50); else setTimeout(() => recallTextareaRef.current?.focus(), 50); return next; }); }
                   }}
                   rows={5}
                   placeholder="Type from memory…"
@@ -983,25 +1181,21 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         {recallMode ? (
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
             <span className="text-amber-500 font-semibold mr-1">Input:</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> hear {selectedLang.label}</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> literary</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">5</kbd> literal</span>
             <span><kbd className="bg-slate-700 px-1 rounded">Enter</kbd> check / retry</span>
             <span><kbd className="bg-slate-700 px-1 rounded">e</kbd> explain</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">0</kbd> question</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">2</kbd> hear answer</span>
             <span><kbd className="bg-slate-700 px-1 rounded">←</kbd> back to text</span>
           </div>
         ) : (
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-            <span><kbd className="bg-slate-700 px-1 rounded">1</kbd>/<kbd className="bg-slate-700 px-1 rounded">3</kbd> prev/next letter</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">2</kbd> this letter</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">4</kbd>/<kbd className="bg-slate-700 px-1 rounded">6</kbd> prev/next word</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">5</kbd> this word</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">7</kbd>/<kbd className="bg-slate-700 px-1 rounded">9</kbd> prev/next paragraph</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">8</kbd> read sentence</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">→</kbd> input mode</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">0</kbd> add flashcard</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">f</kbd> search</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">[</kbd>/<kbd className="bg-slate-700 px-1 rounded">]</kbd> prev/next chapter</span>
-            <span><kbd className="bg-slate-700 px-1 rounded">Ctrl</kbd> stop TTS</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">1</kbd>/<kbd className="bg-slate-700 px-1 rounded">2</kbd>/<kbd className="bg-slate-700 px-1 rounded">3</kbd> prev/this/next letter</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">4</kbd>/<kbd className="bg-slate-700 px-1 rounded">5</kbd>/<kbd className="bg-slate-700 px-1 rounded">6</kbd> prev/this/next word</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">7</kbd>/<kbd className="bg-slate-700 px-1 rounded">8</kbd>/<kbd className="bg-slate-700 px-1 rounded">9</kbd> prev/this/next line</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">t</kbd> gloss+translate · <kbd className="bg-slate-700 px-1 rounded">0</kbd> flashcard · <kbd className="bg-slate-700 px-1 rounded">f</kbd> search · <kbd className="bg-slate-700 px-1 rounded">g</kbd> grammar</span>
+            <span><kbd className="bg-slate-700 px-1 rounded">[</kbd>/<kbd className="bg-slate-700 px-1 rounded">]</kbd> prev/next chapter · <kbd className="bg-slate-700 px-1 rounded">→</kbd> input mode · <kbd className="bg-slate-700 px-1 rounded">Ctrl</kbd> stop</span>
           </div>
         )}
       </div>

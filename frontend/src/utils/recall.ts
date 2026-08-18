@@ -33,6 +33,45 @@ export function splitSentences(text: string): string[] {
   return result.length > 0 ? result : [text.trim()];
 }
 
+// Returns which verse line (0-based) contains wordIndex, and how many lines exist.
+// For prose (no \n): lineIndex 0, totalLines 1.
+export function lineIndexAtWord(paragraphText: string, wordIndex: number): { lineIndex: number; totalLines: number } {
+  if (!paragraphText.includes('\n')) return { lineIndex: 0, totalLines: 1 };
+  const lines = paragraphText.split('\n').filter(l => l.trim().length > 0);
+  let cum = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const count = getWordTokens(tokenizeParagraph(lines[i])).length;
+    if (wordIndex < cum + count) return { lineIndex: i, totalLines: lines.length };
+    cum += count;
+  }
+  return { lineIndex: lines.length - 1, totalLines: lines.length };
+}
+
+// Returns the word index of the first word on verse line `lineIndex`.
+export function firstWordOfLine(paragraphText: string, lineIndex: number): number {
+  if (!paragraphText.includes('\n')) return 0;
+  const lines = paragraphText.split('\n').filter(l => l.trim().length > 0);
+  let cum = 0;
+  for (let i = 0; i < lineIndex && i < lines.length; i++) {
+    cum += getWordTokens(tokenizeParagraph(lines[i])).length;
+  }
+  return cum;
+}
+
+// For poetry (text contains \n): return the verse line that contains wordIndex.
+// For prose: fall back to sentence-level extraction.
+export function lineAtWord(paragraphText: string, wordIndex: number): string {
+  if (!paragraphText.includes('\n')) return sentenceAtWord(paragraphText, wordIndex);
+  const lines = paragraphText.split('\n').filter(l => l.trim().length > 0);
+  let cum = 0;
+  for (const line of lines) {
+    const count = getWordTokens(tokenizeParagraph(line)).length;
+    if (wordIndex < cum + count) return line.trim();
+    cum += count;
+  }
+  return lines.at(-1)?.trim() ?? paragraphText;
+}
+
 export function sentenceAtWord(paragraphText: string, wordIndex: number): string {
   const sentences = splitSentences(paragraphText);
   let cum = 0;

@@ -13,7 +13,8 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         bool GroupByAct = false,
         bool StripHtml = false,
         string Language = "en",
-        string GroupByActPattern = @"^ACT [IVX]+");
+        string GroupByActPattern = @"^ACT [IVX]+",
+        bool IsPoetry = false);
 
     private static readonly BookConfig[] BookCatalog =
     [
@@ -40,14 +41,13 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
             "https://www.orwell.ru/library/essays/politics/english/e_polit",
             null, StripHtml: true),
 
-        // Italian original — cantos grouped under their cantica (INFERNO · CANTO I etc.)
+        // Italian original — file uses "  Inferno • Canto I" style headers
         new("La Divina Commedia", "Dante Alighieri",
             "https://www.gutenberg.org/files/1012/1012-0.txt",
-            @"^(?:INFERNO|PURGATORIO|PARADISO|CANTO [IVXLCDM]+\.?)",
-            RegexOptions.Multiline,
-            GroupByAct: true,
+            @"^\s+(?:Inferno|Purgatorio|Paradiso)\s+[•·]\s+Canto\s+[IVXLCDM]+",
+            RegexOptions.Multiline | RegexOptions.IgnoreCase,
             Language: "it",
-            GroupByActPattern: @"^(?:INFERNO|PURGATORIO|PARADISO)"),
+            IsPoetry: true),
     ];
 
     public async Task ImportAllBooksAsync()
@@ -102,7 +102,7 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
                 Number = chapterNum++,
                 Title = title.Trim()
             };
-            var rawParagraphs = SplitParagraphs(body);
+            var rawParagraphs = SplitParagraphs(body, config.IsPoetry);
             chapter.Paragraphs = rawParagraphs
                 .Select((text2, idx) => new Paragraph { Index = idx, Text = text2 })
                 .ToList();
@@ -190,11 +190,13 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         return sections;
     }
 
-    internal static List<string> SplitParagraphs(string body)
+    internal static List<string> SplitParagraphs(string body, bool preserveLines = false)
     {
         return body
             .Split(["\r\n\r\n", "\n\n"], StringSplitOptions.RemoveEmptyEntries)
-            .Select(p => p.Replace("\r\n", " ").Replace("\n", " ").Trim())
+            .Select(p => preserveLines
+                ? p.Replace("\r\n", "\n").Trim()
+                : p.Replace("\r\n", " ").Replace("\n", " ").Trim())
             .Where(p => p.Length > 10 && !p.StartsWith("***"))
             .ToList();
     }

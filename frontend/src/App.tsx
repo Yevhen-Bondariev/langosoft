@@ -62,7 +62,7 @@ export default function App() {
           return;
         }
         setBooks(allBooks);
-        const b = allBooks[0];
+        const b = allBooks.find(b => b.title === 'La Divina Commedia') ?? allBooks[0];
         setBook(b);
         const chs = await api.books.chapters(b.id);
         if (!mounted) return;

@@ -60,10 +60,20 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ original, typed }),
       }),
-    translateParagraph: (text: string, targetLanguage: string, sourceLanguageCode = 'en') =>
-      req<{ translation: string }>('/words/translate-paragraph', {
+    customExplain: (original: string, literary: string, literal: string, question: string) =>
+      req<{ answer: string }>('/words/custom-explain', {
+        method: 'POST',
+        body: JSON.stringify({ original, literary, literal, question }),
+      }),
+    gloss: (text: string, targetLanguage: string, sourceLanguageCode: string) =>
+      req<{ gloss: string }>('/words/gloss', {
         method: 'POST',
         body: JSON.stringify({ text, targetLanguage, sourceLanguageCode }),
+      }),
+    translateParagraph: (text: string, targetLanguage: string, sourceLanguageCode = 'en', literal = false) =>
+      req<{ translation: string }>('/words/translate-paragraph', {
+        method: 'POST',
+        body: JSON.stringify({ text, targetLanguage, sourceLanguageCode, literal }),
       }),
   },
   grammar: {
