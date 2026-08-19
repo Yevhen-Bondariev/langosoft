@@ -192,7 +192,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [currentHint, setCurrentHint] = useState<PhonemeHint | null>(null);
   const [currentWordGloss, setCurrentWordGloss] = useState<string>('');
-  const [glossLoading, setGlossLoading] = useState(false);
+  const [, setGlossLoading] = useState(false);
   const [glossCacheVersion, setGlossCacheVersion] = useState(0);
   const glossFetchingRef = useRef<Set<string>>(new Set());
   const [grammarTenses, setGrammarTenses] = useState<string[] | null>(null);
