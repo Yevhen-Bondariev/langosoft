@@ -6,4 +6,5 @@ public class Paragraph
     public Chapter Chapter { get; set; } = null!;
     public int Index { get; set; }
     public string Text { get; set; } = "";
+    public string? LongfellowText { get; set; }
 }

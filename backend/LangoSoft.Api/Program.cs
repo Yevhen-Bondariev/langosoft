@@ -130,6 +130,16 @@ using (var scope = app.Services.CreateScope())
     }
     catch { /* column already exists */ }
 
+    // LongfellowText column on Paragraphs (nullable, added after initial deployment)
+    try
+    {
+        var addLongfellowCol = isPostgres
+            ? """ALTER TABLE "Paragraphs" ADD COLUMN IF NOT EXISTS "LongfellowText" TEXT NULL"""
+            : """ALTER TABLE "Paragraphs" ADD COLUMN "LongfellowText" TEXT NULL""";
+        await ctx.Database.ExecuteSqlRawAsync(addLongfellowCol);
+    }
+    catch { /* column already exists */ }
+
     // Seed default categories once
     var hasDefaults = await ctx.FlashcardCategories.AnyAsync(c => c.IsDefault);
     if (!hasDefaults)

@@ -14,7 +14,9 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         bool StripHtml = false,
         string Language = "en",
         string GroupByActPattern = @"^ACT [IVX]+",
-        bool IsPoetry = false);
+        bool IsPoetry = false,
+        string? CompanionUrl = null,
+        string? CompanionChapterPattern = null);
 
     private static readonly BookConfig[] BookCatalog =
     [
@@ -47,15 +49,35 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
             @"^\s+(?:Inferno|Purgatorio|Paradiso)\s+[•·]\s+Canto\s+[IVXLCDM]+",
             RegexOptions.Multiline | RegexOptions.IgnoreCase,
             Language: "it",
-            IsPoetry: true),
+            IsPoetry: true,
+            CompanionUrl: "https://www.gutenberg.org/files/1004/1004-0.txt",
+            CompanionChapterPattern: @"^(?:Inferno|Purgatorio|Paradiso): Canto [IVXLCDM]+"),
     ];
 
     public async Task ImportAllBooksAsync()
     {
         foreach (var config in BookCatalog)
         {
-            if (await db.Books.AnyAsync(b => b.Title == config.Title))
+            var existing = config.CompanionUrl != null
+                ? await db.Books
+                    .Include(b => b.Chapters).ThenInclude(c => c.Paragraphs)
+                    .FirstOrDefaultAsync(b => b.Title == config.Title)
+                : await db.Books.FirstOrDefaultAsync(b => b.Title == config.Title);
+
+            if (existing != null)
+            {
+                // Back-fill companion text for books imported before this feature existed
+                if (config.CompanionUrl != null)
+                {
+                    var needsPairing = !await db.Paragraphs
+                        .AnyAsync(p => p.Chapter.BookId == existing.Id && p.LongfellowText != null);
+                    if (needsPairing)
+                        await PairCompanionTextAsync(existing, config.CompanionUrl,
+                            config.CompanionChapterPattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
+                }
                 continue;
+            }
+
             await ImportBookAsync(config);
         }
     }
@@ -112,7 +134,47 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
 
         db.Books.Add(book);
         await db.SaveChangesAsync();
+
+        if (config.CompanionUrl != null)
+            await PairCompanionTextAsync(book, config.CompanionUrl, config.CompanionChapterPattern,
+                RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
         logger.LogInformation("Done: {Title} — {Count} chapters.", config.Title, chapterNum);
+    }
+
+    private async Task PairCompanionTextAsync(Book book, string companionUrl, string? companionPattern, RegexOptions regexOptions)
+    {
+        logger.LogInformation("Fetching companion text for {Title}...", book.Title);
+        var client = httpClientFactory.CreateClient();
+        string companionText;
+        try { companionText = await client.GetStringAsync(companionUrl); }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to fetch companion text for {Title}. Skipping.", book.Title);
+            return;
+        }
+
+        var content = ExtractMainContent(companionText);
+        var sections = SplitIntoSections(content, companionPattern, "", regexOptions, filterEmpty: true);
+
+        var orderedChapters = book.Chapters.OrderBy(c => c.Number).ToList();
+        int paired = 0;
+        for (int ci = 0; ci < Math.Min(orderedChapters.Count, sections.Count); ci++)
+        {
+            var chapter = orderedChapters[ci];
+            var (_, body) = sections[ci];
+            var companionParas = SplitParagraphs(body, preserveLines: true);
+
+            var orderedParas = chapter.Paragraphs.OrderBy(p => p.Index).ToList();
+            for (int pi = 0; pi < Math.Min(orderedParas.Count, companionParas.Count); pi++)
+            {
+                orderedParas[pi].LongfellowText = companionParas[pi];
+                paired++;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        logger.LogInformation("Companion text: paired {Count} stanzas for {Title}.", paired, book.Title);
     }
 
     // Prefix scene titles with their containing act: "ACT I · SCENE II".

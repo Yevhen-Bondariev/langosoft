@@ -60,7 +60,10 @@ public class GroqClient(IHttpClientFactory httpClientFactory, IConfiguration con
             var response = await client.SendAsync(request);
 
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                Console.Error.WriteLine($"[GroqClient] 429 rate-limited on key ...{key[^8..]}");
                 return (null, true);
+            }
 
             if (!response.IsSuccessStatusCode)
             {
@@ -83,8 +86,9 @@ public class GroqClient(IHttpClientFactory httpClientFactory, IConfiguration con
 
             return (content, false);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[GroqClient] Exception: {ex.GetType().Name}: {ex.Message}");
             return (null, false);
         }
     }

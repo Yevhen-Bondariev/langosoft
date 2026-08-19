@@ -2,7 +2,7 @@ namespace LangoSoft.Api.DTOs;
 
 public record BookDto(int Id, string Title, string Author, string Language, int ChapterCount);
 public record ChapterDto(int Id, int BookId, int Number, string Title, int ParagraphCount);
-public record ParagraphDto(int Id, int ChapterId, int Index, string Text);
+public record ParagraphDto(int Id, int ChapterId, int Index, string Text, string? LongfellowText);
 public record ProgressDto(int BookId, int ChapterNumber, int ParagraphIndex, int WordIndex, DateTime LastRead);
 public record CategoryDto(int Id, string Name, bool IsDefault, string Color);
 public record CreateCategoryDto(string Name, string Color = "#6366f1");

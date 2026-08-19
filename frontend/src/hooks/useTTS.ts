@@ -12,6 +12,15 @@ interface ChainItem {
   rate?: number;
 }
 
+// Pick the best available voice for a language prefix.
+// Prefers Google voices (highest quality, typically female for Romance languages)
+// over system/offline voices which are often lower-quality male.
+function pickVoice(langPrefix: string): SpeechSynthesisVoice | null {
+  const matches = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith(langPrefix));
+  if (matches.length === 0) return null;
+  return matches.find(v => v.name.includes('Google')) ?? matches[0];
+}
+
 export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultLang = 'en') {
   const speak = useCallback((text: string, options?: SpeakOptions) => {
     window.speechSynthesis.cancel();
@@ -21,14 +30,17 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
 
     const targetLang = options?.lang ?? defaultLang;
     const langPrefix = targetLang.split('-')[0];
-    const match = window.speechSynthesis.getVoices().find(v => v.lang.startsWith(langPrefix));
-    if (match) {
-      u.voice = match; u.lang = match.lang;
-    } else if (voice) {
-      // No voice for requested language — use selected voice as fallback
+    if (langPrefix === 'en' && voice) {
       u.voice = voice; u.lang = voice.lang;
     } else {
-      u.lang = targetLang;
+      const match = pickVoice(langPrefix);
+      if (match) {
+        u.voice = match; u.lang = match.lang;
+      } else if (voice) {
+        u.voice = voice; u.lang = voice.lang;
+      } else {
+        u.lang = targetLang;
+      }
     }
 
     window.speechSynthesis.speak(u);
@@ -42,9 +54,21 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
       const item = items[index];
       if (!item.text?.trim()) { go(index + 1); return; }
       const u = new SpeechSynthesisUtterance(item.text);
-      u.lang = item.lang ?? 'en-GB';
       u.rate = item.rate ?? rate;
-      if (voice && !item.lang) u.voice = voice;
+      if (item.lang) {
+        const langPrefix = item.lang.split('-')[0];
+        if (langPrefix === 'en' && voice) {
+          u.voice = voice; u.lang = voice.lang;
+        } else {
+          const match = pickVoice(langPrefix);
+          if (match) { u.voice = match; u.lang = match.lang; }
+          else u.lang = item.lang;
+        }
+      } else if (voice) {
+        u.voice = voice; u.lang = voice.lang;
+      } else {
+        u.lang = 'en-GB';
+      }
       u.onend = () => go(index + 1);
       u.onerror = () => go(index + 1);
       window.speechSynthesis.speak(u);

@@ -232,4 +232,75 @@ public class WordService(GroqClient groqClient)
 
         return await groqClient.ChatAsync(body) ?? "";
     }
+
+    public async Task<string?> TestGroqRawAsync(object body) => await groqClient.ChatAsync(body, timeoutSeconds: 30);
+
+    // Translate a vocabulary list into English in rate-limited batches.
+    // Designed for one-time static-file generation; not for real-time use.
+    // Returns: normalizedWord (lowercase, no diacritics, no apostrophes) → englishTranslation
+    public async Task<Dictionary<string, string>> TranslateVocabularyAsync(
+        IList<string> words, string sourceLangName, int batchSize = 30)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var batchNum = 0;
+        for (int i = 0; i < words.Count; i += batchSize)
+        {
+            if (i > 0) await Task.Delay(8000); // 8s between batches
+
+            var batch = words.Skip(i).Take(batchSize).ToList();
+            batchNum++;
+
+            // Use GlossAsync-style prompt: words as space-separated text (not a quoted list).
+            // This format works reliably; the quoted-list format causes empty generation.
+            var text = string.Join(" ", batch);
+            var prompt =
+                $"Translate every word of this {sourceLangName} text into English. " +
+                $"Output a single JSON object (no markdown, no code fences) where each key is an original word " +
+                $"(lowercase, strip punctuation) and the value is its English translation (1-3 words). " +
+                $"Include every word.\n\n" +
+                $"Text: {text}\n\n" +
+                "Output only the JSON object, nothing else.";
+
+            string? raw = null;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                if (attempt > 0)
+                {
+                    Console.Error.WriteLine($"[Vocab] Batch {batchNum}: retrying after 60s (attempt {attempt + 1})...");
+                    await Task.Delay(60000);
+                }
+                // Use compound-mini: a non-reasoning model that reliably outputs json_object.
+                // qwen3 (Model constant) is a reasoning model that puts <think> inside message.content,
+                // which breaks Groq's server-side json_validate when response_format is set.
+                raw = await groqClient.ChatAsync(new
+                {
+                    model = "groq/compound-mini", max_tokens = 2048, temperature = 0,
+                    response_format = new { type = "json_object" },
+                    messages = new[] { new { role = "user", content = prompt } }
+                }, timeoutSeconds: 60);
+                if (raw != null) break;
+            }
+
+            if (raw == null)
+            {
+                Console.Error.WriteLine($"[Vocab] Batch {batchNum}: all attempts failed, skipping");
+                continue;
+            }
+
+            Console.Error.WriteLine($"[Vocab] Batch {batchNum}: got {raw.Length} chars, preview: [{(raw.Length > 200 ? raw[..200] : raw)}]");
+            var start = raw.IndexOf('{'); var end = raw.LastIndexOf('}');
+            if (start < 0 || end <= start) { Console.Error.WriteLine($"[Vocab] Batch {batchNum}: no JSON object found in [{raw}]"); continue; }
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(raw[start..(end + 1)]);
+                if (parsed == null) continue;
+                foreach (var (k, v) in parsed)
+                    if (!string.IsNullOrWhiteSpace(v)) result[k.ToLowerInvariant()] = v;
+                Console.Error.WriteLine($"[Vocab] Batch {batchNum}: +{parsed.Count} words (total {result.Count})");
+            }
+            catch (Exception ex) { Console.Error.WriteLine($"[Vocab] Batch {batchNum}: parse error: {ex.Message}"); }
+        }
+        return result;
+    }
 }

@@ -18,6 +18,7 @@ export const api = {
     chapters: (bookId: number) => req<Chapter[]>(`/books/${bookId}/chapters`),
     paragraphs: (bookId: number, chapterNum: number) =>
       req<Paragraph[]>(`/books/${bookId}/chapters/${chapterNum}/paragraphs`),
+    wordFrequencies: (bookId: number) => req<Record<string, number>>(`/books/${bookId}/word-frequencies`),
     import: () => req<{ message: string }>('/books/import', { method: 'POST' }),
   },
   progress: {

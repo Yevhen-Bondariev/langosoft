@@ -19,6 +19,7 @@ export interface Paragraph {
   chapterId: number;
   index: number;
   text: string;
+  longfellowText?: string;
 }
 
 export interface Category {

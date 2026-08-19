@@ -225,8 +225,15 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [showKeyboardRef, setShowKeyboardRef] = useState(false);
 
   const lineLiteraryCache = useRef<Map<string, string>>(new Map());
-  // Per-word translation cache: "${line}::${langName}" → Map<lowercase-word, translation>
+  // Per-word translation cache: "${paraIdx}::en" → Map<normWord, translation> (filled by API/DB)
   const glossWordCache = useRef<Map<string, Map<string, string>>>(new Map());
+  // Flat word dictionary loaded from public/gloss-{lang}.json: normWord → english (covers whole book)
+  const staticGlossRef = useRef<Map<string, string> | null>(null);
+  const [staticGlossLoaded, setStaticGlossLoaded] = useState(false);
+
+  const [wordFreq, setWordFreq] = useState<Record<string, number>>({});
+  const maxFreqRef = useRef(1);
+  const [showFreqColors, setShowFreqColors] = useState(false);
 
   // Archaism cache: paragraphId → Map<lowercase-word, explanation>
   const [archaisms, setArchaisms] = useState<Map<string, string>>(new Map());
@@ -297,6 +304,31 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
 
+  // Fetch word frequencies for the whole book once (used for heat-map coloring)
+  useEffect(() => {
+    api.books.wordFrequencies(book.id).then(freq => {
+      maxFreqRef.current = Object.values(freq).reduce((a, b) => Math.max(a, b), 1);
+      setWordFreq(freq);
+    }).catch(() => {});
+  }, [book.id]);
+
+  // Load static flat word dictionary for non-English books (generated once, never changes).
+  // File: public/gloss-{lang}.json — flat { normalizedWord: englishTranslation }
+  useEffect(() => {
+    if (book.language === 'en') return;
+    staticGlossRef.current = null;
+    setStaticGlossLoaded(false);
+    fetch(`/gloss-${book.language}.json`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: Record<string, string> | null) => {
+        if (data) {
+          staticGlossRef.current = new Map(Object.entries(data));
+          setStaticGlossLoaded(true);
+        }
+      })
+      .catch(() => {});
+  }, [book.language]);
+
   // Load paragraphs when chapter changes
   useEffect(() => {
     if (!progressLoaded) return;
@@ -334,6 +366,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   // Pre-fetch English word-by-word gloss for current paragraph + next two (non-English books only)
   useEffect(() => {
     if (book.language === 'en') { setGlossLoading(false); return; }
+    if (staticGlossLoaded) { setGlossLoading(false); return; } // static file covers everything
 
     const currentCacheKey = `${currentParagraphIndex}::en`;
     setGlossLoading(!glossWordCache.current.has(currentCacheKey));
@@ -377,7 +410,45 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const t1 = setTimeout(() => fetchGloss(currentParagraphIndex + 1), 500);
     const t2 = setTimeout(() => fetchGloss(currentParagraphIndex + 2), 1200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [currentParagraphIndex, paragraphs, book.language]);
+  }, [currentParagraphIndex, paragraphs, book.language, staticGlossLoaded]);
+
+  // Bulk pre-fetch gloss for all paragraphs in the current chapter (staggered to avoid rate limits)
+  useEffect(() => {
+    if (book.language === 'en' || paragraphs.length === 0) return;
+    if (staticGlossLoaded) return; // static file covers everything — no Groq calls needed
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    paragraphs.forEach((para, idx) => {
+      const cacheKey = `${idx}::en`;
+      if (glossWordCache.current.has(cacheKey)) return;
+      const t = setTimeout(() => {
+        if (glossFetchingRef.current.has(cacheKey) || glossWordCache.current.has(cacheKey)) return;
+        glossFetchingRef.current.add(cacheKey);
+        api.paragraphs.gloss(para.id, 'English')
+          .then(r => {
+            const map = new Map<string, string>();
+            try {
+              const obj = JSON.parse(r.gloss) as Record<string, string>;
+              for (const [word, tr] of Object.entries(obj)) {
+                if (typeof tr === 'string') map.set(normWord(word), tr);
+              }
+            } catch {
+              r.gloss.split(';').forEach(entry => {
+                const dash = entry.search(/\s[—–]\s/);
+                if (dash > 0) map.set(normWord(entry.slice(0, dash).trim()), entry.slice(dash + 3).trim());
+              });
+            }
+            if (map.size > 0) {
+              glossWordCache.current.set(cacheKey, map);
+              setGlossCacheVersion(v => v + 1);
+            }
+          })
+          .catch(() => {})
+          .finally(() => { glossFetchingRef.current.delete(cacheKey); });
+      }, idx * 80); // stagger: 80ms between each
+      timers.push(t);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [paragraphs, book.language, staticGlossLoaded]);
 
   // Reactively refresh displayed gloss when the cache populates (gloss arrives after navigation)
   useEffect(() => {
@@ -386,9 +457,11 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const wTokens = getWordTokens(tokens);
     const token = wTokens[currentWordIndex];
     const word = token?.rawWord || token?.text || '';
-    const cacheMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
-    setCurrentWordGloss(word ? (cacheMap?.get(normWord(word)) ?? '') : '');
-  }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, glossCacheVersion]);
+    const norm = word ? normWord(word) : '';
+    const fromCache = norm ? glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(norm) : undefined;
+    const fromStatic = norm ? staticGlossRef.current?.get(norm) : undefined;
+    setCurrentWordGloss(fromCache ?? fromStatic ?? '');
+  }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, glossCacheVersion, staticGlossLoaded]);
 
   // Fetch archaism annotations for the current paragraph (non-English books only, cached per paragraphId)
   useEffect(() => {
@@ -472,8 +545,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const word = token?.rawWord || token?.text || '';
     if (word) {
       const cacheMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
-      const tr = cacheMap?.get(normWord(word)) ?? '';
-      console.log('[gloss]', { word, tr, cacheSize: cacheMap?.size ?? 'no cache', paraIdx: currentParagraphIndex });
+      const tr = cacheMap?.get(normWord(word)) ?? staticGlossRef.current?.get(normWord(word)) ?? '';
       setCurrentWordGloss(tr);
       if (archaismMapRef.current.has(word.toLowerCase())) playArchaismTone();
       speak(word);
@@ -882,17 +954,18 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         }
         return;
       }
-      // ── 5 / Numpad5 ── current word + translation
+      // ── 5 / Numpad5 ── current word + translation (chain: Italian → English immediately after)
       if (key === '5' || code === 'Numpad5') {
         e.preventDefault();
         const token = wordTokens[currentWordIndex];
         if (token) {
           const word = token.rawWord || token.text;
-          const tr5 = glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(normWord(word)) ?? '';
-          speak(word);
-          if (tr5) {
-            const delay5 = Math.max(700, Math.round(word.length * 110 / ttsRate));
-            setTimeout(() => speak(tr5, { lang: 'en' }), delay5);
+          const tr5 = glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(normWord(word))
+            ?? staticGlossRef.current?.get(normWord(word)) ?? '';
+          if (tr5 && book.language !== 'en') {
+            speakChain([{ text: word, lang: book.language }, { text: tr5, lang: 'en' }]);
+          } else {
+            speak(word);
           }
           if (showPhonemeHints) {
             const hint = phonemeHints[word.toLowerCase()];
@@ -914,7 +987,21 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           }
           goToWord(currentWordIndex + 1);
         } else if (currentParagraphIndex < paragraphs.length - 1) {
-          goToParagraph(currentParagraphIndex + 1, true);
+          const nextIdx = currentParagraphIndex + 1;
+          const nextPara = paragraphs[nextIdx];
+          goToParagraph(nextIdx, false);
+          if (nextPara) {
+            const m = nextPara.text.match(/[\p{L}''\-]+/u);
+            if (m) {
+              const word = m[0];
+              const tr = staticGlossRef.current?.get(normWord(word)) ?? '';
+              speak(word);
+              if (tr && book.language !== 'en') {
+                const delay = Math.max(700, Math.round(word.length * 110 / ttsRate));
+                setTimeout(() => speak(tr, { lang: 'en' }), delay);
+              }
+            }
+          }
         }
         return;
       }
@@ -1031,6 +1118,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           .catch(() => speak('Translation unavailable', { lang: 'en' }));
         return;
       }
+      // ── Delete ── speak Longfellow (literary) translation of current stanza
+      if (key === 'Delete') {
+        e.preventDefault();
+        const para = paragraphs[currentParagraphIndex];
+        if (para?.longfellowText) {
+          speak(para.longfellowText, { lang: 'en' });
+          announceToNvda(para.longfellowText);
+        }
+        return;
+      }
       // ── s ── toggle speed between 1.0× and 1.5×
       if (key === 's' || key === 'S') {
         e.preventDefault();
@@ -1101,91 +1198,197 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
 
   useSwipeGesture(readingPaneRef, swipeOptions, !recallMode);
 
+  const freqColor = (rawWord: string): string | undefined => {
+    const max = maxFreqRef.current;
+    if (!showFreqColors || max <= 1 || !Object.keys(wordFreq).length) return undefined;
+    const count = wordFreq[normWord(rawWord)];
+    if (!count) return undefined;
+    const t = Math.log(count + 1) / Math.log(max + 1);
+    const hue = Math.round(220 * (1 - t));
+    return `hsl(${hue}, 70%, 65%)`;
+  };
+
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
     const isCurrent = paraIdx === currentParagraphIndex;
     const paraTokens = allTokens[paraIdx] ?? [];
+    const isPoetryNonEn = para.text.includes('\n') && book.language !== 'en';
 
+    const outerClass = `px-4 py-3 rounded-lg mb-2 transition-colors ${
+      isCurrent
+        ? 'bg-slate-800 border-l-4 border-amber-500'
+        : 'bg-transparent hover:bg-slate-900 border-l-4 border-transparent'
+    }`;
+    const outerClick = () => {
+      setCurrentParagraphIndex(paraIdx);
+      setCurrentWordIndex(0);
+      saveProgress(chapterNum, paraIdx, 0);
+    };
+
+    const renderWordSpan = (token: (typeof paraTokens)[number], origTi: number) => {
+      const isCurrentWord = isCurrent && token.wordIndex === currentWordIndex;
+      let searchClass = '';
+      if (searchMode && isCurrent && searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (token.rawWord.toLowerCase().startsWith(q)) {
+          const matchIdx = searchMatches.findIndex(m => m.i === token.wordIndex);
+          if (matchIdx === clampedSearchIdx) searchClass = 'word-search-selected';
+          else searchClass = 'word-search-match';
+        }
+      }
+      const hasHint = showPhonemeHints && !!phonemeHints[token.rawWord.toLowerCase()];
+      const isArchaic = archaisms.has(token.rawWord.toLowerCase());
+      return (
+        <span
+          key={origTi}
+          ref={isCurrentWord ? currentWordRef : null}
+          role="button"
+          tabIndex={isCurrentWord ? 0 : -1}
+          className={`word-token ${isCurrentWord ? 'word-current' : ''} ${searchClass} ${hasHint ? 'word-has-hint' : ''} ${isArchaic ? 'word-archaic' : ''}`}
+          style={isCurrentWord ? undefined : { color: freqColor(token.rawWord) }}
+          onClick={e => {
+            e.stopPropagation();
+            if (isCurrent && token.wordIndex !== null) {
+              setCurrentWordIndex(token.wordIndex);
+            } else {
+              setCurrentParagraphIndex(paraIdx);
+              setCurrentWordIndex(token.wordIndex ?? 0);
+              saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
+            }
+          }}
+          onDoubleClick={e => {
+            e.stopPropagation();
+            if (token.wordIndex !== null) openAddFlashcard(token.wordIndex);
+          }}
+          onTouchStart={e => {
+            currentTouchWordIdxRef.current = token.wordIndex;
+            longPressHandlers.onTouchStart(e);
+          }}
+          onTouchEnd={longPressHandlers.onTouchEnd}
+          onTouchMove={longPressHandlers.onTouchMove}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (isCurrent && token.wordIndex !== null) {
+                setCurrentWordIndex(token.wordIndex);
+              } else {
+                setCurrentParagraphIndex(paraIdx);
+                setCurrentWordIndex(token.wordIndex ?? 0);
+                saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
+              }
+            } else if (e.key === ' ') {
+              e.preventDefault();
+              if (token.wordIndex !== null) openAddFlashcard(token.wordIndex);
+            }
+          }}
+          title={hasHint ? phonemeHints[token.rawWord.toLowerCase()]?.display : 'Double-click or Space/long-press to add to flashcards'}
+        >
+          {token.text}
+        </span>
+      );
+    };
+
+    // Poetry (Dante) — per-line layout: [Italian] [literal] [Longfellow] for each verse line
+    if (isPoetryNonEn) {
+      // Word lookup: per-paragraph API cache first, then flat static dict
+      const perParaMap = glossWordCache.current.get(`${paraIdx}::en`);
+      const lookupEng = (word: string): string => {
+        const norm = normWord(word);
+        return perParaMap?.get(norm) ?? staticGlossRef.current?.get(norm) ?? '';
+      };
+      const hasGloss = !!(perParaMap || staticGlossRef.current);
+      // Longfellow text is stored as a single stanza with \n separating lines
+      const longfellowLines = para.longfellowText?.split('\n') ?? [];
+
+      // Split tokens into verse lines at newline-bearing space tokens
+      const lineGroups: Array<Array<{ token: (typeof paraTokens)[number]; origTi: number }>> = [];
+      let currentGroup: Array<{ token: (typeof paraTokens)[number]; origTi: number }> = [];
+      paraTokens.forEach((token, ti) => {
+        if (token.type === 'space' && token.text.includes('\n')) {
+          lineGroups.push(currentGroup);
+          currentGroup = [];
+        } else {
+          currentGroup.push({ token, origTi: ti });
+        }
+      });
+      if (currentGroup.length > 0) lineGroups.push(currentGroup);
+
+      return (
+        <div key={para.id} ref={isCurrent ? currentParaRef : null}
+          className={outerClass} onClick={outerClick} aria-current={isCurrent ? 'true' : undefined}>
+          {lineGroups.map((lineItems, li) => {
+            const wordItems = lineItems.filter(({ token }) => token.type === 'word');
+            const lfLine = longfellowLines[li]?.trim() ?? '';
+            return (
+              <div key={li} className={li > 0 ? 'mt-3' : ''}>
+                {/* Each word paired with its translation in one column — guaranteed alignment */}
+                <div className="flex flex-wrap gap-x-3 gap-y-0">
+                  {wordItems.map(({ token, origTi }) => {
+                    const eng = hasGloss ? lookupEng(token.rawWord) : '';
+                    return (
+                      <div key={origTi} className="inline-flex flex-col items-start">
+                        {renderWordSpan(token, origTi)}
+                        {hasGloss && (
+                          <span className="text-sky-400 font-mono text-sm leading-tight">
+                            {eng || '·'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Longfellow for this specific verse line */}
+                {lfLine && (
+                  <div className="font-mono text-base leading-snug text-slate-400 italic">
+                    {lfLine}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Prose / English — original flat rendering
     return (
-      <div
-        key={para.id}
-        ref={isCurrent ? currentParaRef : null}
-        className={`px-4 py-3 rounded-lg mb-2 text-xl leading-relaxed transition-colors ${
-          isCurrent
-            ? 'bg-slate-800 border-l-4 border-amber-500'
-            : 'bg-transparent hover:bg-slate-900 border-l-4 border-transparent'
-        }`}
-        style={para.text.includes('\n') ? { whiteSpace: 'pre-line' } : undefined}
-        onClick={() => {
-          setCurrentParagraphIndex(paraIdx);
-          setCurrentWordIndex(0);
-          saveProgress(chapterNum, paraIdx, 0);
-        }}
-        aria-current={isCurrent ? 'true' : undefined}
-      >
+      <div key={para.id} ref={isCurrent ? currentParaRef : null}
+        className={`${outerClass} text-xl leading-relaxed`}
+        onClick={outerClick} aria-current={isCurrent ? 'true' : undefined}>
         {paraTokens.map((token, ti) => {
           if (token.type !== 'word') return <span key={ti}>{token.text}</span>;
-
-          const isCurrentWord = isCurrent && token.wordIndex === currentWordIndex;
-          let searchClass = '';
-          if (searchMode && isCurrent && searchQuery) {
-            const q = searchQuery.toLowerCase();
-            if (token.rawWord.toLowerCase().startsWith(q)) {
-              const matchIdx = searchMatches.findIndex(m => m.i === token.wordIndex);
-              if (matchIdx === clampedSearchIdx) searchClass = 'word-search-selected';
-              else searchClass = 'word-search-match';
-            }
-          }
-          const hasHint = showPhonemeHints && !!phonemeHints[token.rawWord.toLowerCase()];
-          const isArchaic = archaisms.has(token.rawWord.toLowerCase());
-
-          return (
-            <span
-              key={ti}
-              ref={isCurrentWord ? currentWordRef : null}
-              role="button"
-              tabIndex={isCurrentWord ? 0 : -1}
-              className={`word-token ${isCurrentWord ? 'word-current' : ''} ${searchClass} ${hasHint ? 'word-has-hint' : ''} ${isArchaic ? 'word-archaic' : ''}`}
-              onClick={e => {
-                e.stopPropagation();
-                if (isCurrent && token.wordIndex !== null) {
-                  setCurrentWordIndex(token.wordIndex);
-                } else {
-                  setCurrentParagraphIndex(paraIdx);
-                  setCurrentWordIndex(token.wordIndex ?? 0);
-                  saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
-                }
-              }}
-              onDoubleClick={e => {
-                e.stopPropagation();
-                if (token.wordIndex !== null) openAddFlashcard(token.wordIndex);
-              }}
-              onTouchStart={e => {
-                currentTouchWordIdxRef.current = token.wordIndex;
-                longPressHandlers.onTouchStart(e);
-              }}
-              onTouchEnd={longPressHandlers.onTouchEnd}
-              onTouchMove={longPressHandlers.onTouchMove}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (isCurrent && token.wordIndex !== null) {
-                    setCurrentWordIndex(token.wordIndex);
-                  } else {
-                    setCurrentParagraphIndex(paraIdx);
-                    setCurrentWordIndex(token.wordIndex ?? 0);
-                    saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
-                  }
-                } else if (e.key === ' ') {
-                  e.preventDefault();
-                  if (token.wordIndex !== null) openAddFlashcard(token.wordIndex);
-                }
-              }}
-              title={hasHint ? phonemeHints[token.rawWord.toLowerCase()]?.display : 'Double-click or Space/long-press to add to flashcards'}
-            >
-              {token.text}
-            </span>
-          );
+          return renderWordSpan(token, ti);
         })}
+        {book.language !== 'en' && (() => {
+          const glossMap = glossWordCache.current.get(`${paraIdx}::en`);
+          const staticMap = staticGlossRef.current;
+          const wTokens = getWordTokens(paraTokens);
+          const hasLiteral = (glossMap || staticMap) && wTokens.length > 0;
+          if (!hasLiteral && !para.longfellowText) return null;
+          return (
+            <div className="mt-2 space-y-1">
+              {hasLiteral && (
+                <div className="flex flex-wrap gap-x-2 gap-y-0">
+                  {paraTokens.map((token, ti) => {
+                    if (token.type !== 'word') return null;
+                    const eng = glossMap?.get(normWord(token.rawWord)) ?? staticMap?.get(normWord(token.rawWord)) ?? '';
+                    const width = Math.max(token.rawWord.length, eng.length);
+                    return (
+                      <span key={ti} className="inline-flex items-baseline font-mono text-xs"
+                        style={{ minWidth: `${width}ch` }}>
+                        <span className="text-sky-400">{eng || '·'}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {para.longfellowText && (
+                <p className="text-slate-500 italic text-sm leading-snug">
+                  {para.longfellowText}
+                </p>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -1237,6 +1440,14 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           title="How to read"
           className="text-slate-500 hover:text-amber-400 text-base leading-none transition-colors"
         >?</button>
+        {Object.keys(wordFreq).length > 0 && (
+          <button
+            onClick={() => setShowFreqColors(v => !v)}
+            title={showFreqColors ? 'Disable word frequency colors' : 'Enable word frequency colors'}
+            aria-pressed={showFreqColors}
+            className={`text-xs px-2 py-0.5 rounded border transition-colors ${showFreqColors ? 'border-sky-600 text-sky-400 bg-sky-900/30' : 'border-slate-600 text-slate-500'}`}
+          >freq</button>
+        )}
         <button
           onClick={() => goToChapter(chapterNum + 1)}
           disabled={chapterNum >= totalChapters - 1}
@@ -1283,12 +1494,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             : 0;
           return <span className="text-slate-600">Chapter {chapterPct}% · Book {bookPct}%</span>;
         })()}
-        {book.language !== 'en' && !statusMsg && (
-          currentWordGloss
-            ? <span className="text-sky-400 text-sm ml-auto italic">{currentWordGloss}</span>
-            : glossLoading
-            ? <span className="text-slate-500 text-sm ml-auto italic animate-pulse">translating…</span>
-            : null
+        {book.language !== 'en' && !statusMsg && currentWordGloss && (
+          <span className="text-sky-400 text-sm ml-auto italic">{currentWordGloss}</span>
         )}
         {statusMsg && <span className="text-amber-400 font-medium ml-auto" aria-live="polite" aria-atomic="true">{statusMsg}</span>}
       </div>
