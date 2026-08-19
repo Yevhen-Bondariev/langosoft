@@ -16,7 +16,39 @@ import { MobileActionBar } from './MobileActionBar';
 // Groq strips accents (più→piu, è→e) and apostrophes (v'intrai→vintrai, com'→com),
 // so we apply the same transforms on both the cache key and the lookup word.
 const normWord = (w: string) =>
-  w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/['''’`]/g, '');
+  w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/['\u2018\u2019\u02BC`]/g, '');
+
+// softNorm: lowercase + strip apostrophes but KEEP diacritics.
+// Lets e vs e with grave, la vs la with grave remain distinct in gloss lookup.
+const softNorm = (w: string) =>
+  w.toLowerCase().replace(/['\u2018\u2019\u02BC`]/g, '');
+
+// Looks up a raw word in cache + static map.
+// Tries accent-preserving form first so e and e with grave map to different glosses,
+// then falls back to accent-stripped form so piu still matches piu entry.
+// Also handles Italian elision: l'ora -> tries l then ora.
+const resolveGloss = (
+  rawWord: string,
+  cacheMap: Map<string, string> | undefined,
+  staticMap: Map<string, string> | null | undefined,
+): string => {
+  const soft = softNorm(rawWord);
+  const direct = cacheMap?.get(soft) ?? staticMap?.get(soft);
+  if (direct) return direct;
+  const norm = normWord(rawWord);
+  if (norm !== soft) {
+    const stripped = cacheMap?.get(norm) ?? staticMap?.get(norm);
+    if (stripped) return stripped;
+  }
+  if (/['\u2018\u2019\u02BC`]/.test(rawWord)) {
+    for (const part of rawWord.split(/['\u2018\u2019\u02BC`]/).filter(p => p.length > 0)) {
+      const tr = cacheMap?.get(softNorm(part)) ?? staticMap?.get(softNorm(part))
+        ?? cacheMap?.get(normWord(part)) ?? staticMap?.get(normWord(part));
+      if (tr) return tr;
+    }
+  }
+  return '';
+};
 
 const LANG_NAMES: Record<string, string> = {
   en: 'English', it: 'Italian', fr: 'French', de: 'German',
@@ -366,10 +398,12 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   // Pre-fetch English word-by-word gloss for current paragraph + next two (non-English books only)
   useEffect(() => {
     if (book.language === 'en') { setGlossLoading(false); return; }
-    if (staticGlossLoaded) { setGlossLoading(false); return; } // static file covers everything
 
     const currentCacheKey = `${currentParagraphIndex}::en`;
-    setGlossLoading(!glossWordCache.current.has(currentCacheKey));
+    // When static dict is loaded it's always available — don't show a loading spinner.
+    // Without static dict, show spinner until the per-paragraph fetch completes.
+    if (staticGlossLoaded) setGlossLoading(false);
+    else setGlossLoading(!glossWordCache.current.has(currentCacheKey));
 
     const fetchGloss = (idx: number) => {
       const para = paragraphs[idx];
@@ -379,7 +413,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       if (glossFetchingRef.current.has(cacheKey)) return;
 
       glossFetchingRef.current.add(cacheKey);
-      api.paragraphs.gloss(para.id, 'English')
+      api.paragraphs.gloss(para.id, 'English', staticGlossLoaded)
         .then(r => {
           const map = new Map<string, string>();
           try {
@@ -415,7 +449,8 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   // Bulk pre-fetch gloss for all paragraphs in the current chapter (staggered to avoid rate limits)
   useEffect(() => {
     if (book.language === 'en' || paragraphs.length === 0) return;
-    if (staticGlossLoaded) return; // static file covers everything — no Groq calls needed
+    // Always pre-fetch per-paragraph glosses from DB (cacheOnly=true when static is loaded,
+    // so no Groq calls are made — DB glosses override the static file for better accuracy).
     const timers: ReturnType<typeof setTimeout>[] = [];
     paragraphs.forEach((para, idx) => {
       const cacheKey = `${idx}::en`;
@@ -423,7 +458,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       const t = setTimeout(() => {
         if (glossFetchingRef.current.has(cacheKey) || glossWordCache.current.has(cacheKey)) return;
         glossFetchingRef.current.add(cacheKey);
-        api.paragraphs.gloss(para.id, 'English')
+        api.paragraphs.gloss(para.id, 'English', staticGlossLoaded)
           .then(r => {
             const map = new Map<string, string>();
             try {
@@ -457,10 +492,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const wTokens = getWordTokens(tokens);
     const token = wTokens[currentWordIndex];
     const word = token?.rawWord || token?.text || '';
-    const norm = word ? normWord(word) : '';
-    const fromCache = norm ? glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(norm) : undefined;
-    const fromStatic = norm ? staticGlossRef.current?.get(norm) : undefined;
-    setCurrentWordGloss(fromCache ?? fromStatic ?? '');
+    setCurrentWordGloss(word ? resolveGloss(word, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current) : '');
   }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, glossCacheVersion, staticGlossLoaded]);
 
   // Fetch archaism annotations for the current paragraph (non-English books only, cached per paragraphId)
@@ -545,7 +577,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const word = token?.rawWord || token?.text || '';
     if (word) {
       const cacheMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
-      const tr = cacheMap?.get(normWord(word)) ?? staticGlossRef.current?.get(normWord(word)) ?? '';
+      const tr = resolveGloss(word, cacheMap, staticGlossRef.current);
       setCurrentWordGloss(tr);
       if (archaismMapRef.current.has(word.toLowerCase())) playArchaismTone();
       speak(word);
@@ -960,8 +992,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         const token = wordTokens[currentWordIndex];
         if (token) {
           const word = token.rawWord || token.text;
-          const tr5 = glossWordCache.current.get(`${currentParagraphIndex}::en`)?.get(normWord(word))
-            ?? staticGlossRef.current?.get(normWord(word)) ?? '';
+          const tr5 = resolveGloss(word, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current);
           if (tr5 && book.language !== 'en') {
             speakChain([{ text: word, lang: book.language }, { text: tr5, lang: 'en' }]);
           } else {
@@ -1071,13 +1102,40 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         goToChapter(chapterNum + 1);
         return;
       }
-      // ── f ── search
-      if (key === 'f' || key === 'F') {
+      // ── a ── speak Italian original of current verse line
+      if (key === 'a' || key === 'A') {
         e.preventDefault();
-        setSearchMode(true);
-        setSearchQuery('');
-        setSearchSelectedIndex(0);
-        setTimeout(() => searchInputRef.current?.focus(), 50);
+        const para = paragraphs[currentParagraphIndex];
+        if (!para) return;
+        const line = lineAtWord(para.text, currentWordIndex);
+        if (line) { speak(line); announceToNvda(line); }
+        return;
+      }
+      // ── s ── speak word-by-word English gloss of current verse line
+      if (key === 's' || key === 'S') {
+        e.preventDefault();
+        const para = paragraphs[currentParagraphIndex];
+        if (!para) return;
+        const line = lineAtWord(para.text, currentWordIndex);
+        if (!line) return;
+        const perParaMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
+        const wordRx = /[\p{L}'\u2018\u2019\u02BC`\-]+/gu;
+        const words = Array.from(line.matchAll(wordRx)).map(m => m[0]);
+        const glossParts = words.map(w => resolveGloss(w, perParaMap, staticGlossRef.current)).filter(Boolean);
+        if (glossParts.length > 0) { speak(glossParts.join(' '), { lang: 'en' }); announceToNvda(glossParts.join(' ')); }
+        else speak('No gloss available', { lang: 'en' });
+        return;
+      }
+      // ── d ── speak Longfellow (literary) translation of current verse line
+      if (key === 'd' || key === 'D') {
+        e.preventDefault();
+        const para = paragraphs[currentParagraphIndex];
+        if (!para) return;
+        const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex);
+        const lfLines = para.longfellowText?.split('\n') ?? [];
+        const lfLine = lfLines[lineIndex]?.trim() ?? '';
+        if (lfLine) { speak(lfLine, { lang: 'en' }); announceToNvda(lfLine); }
+        else speak('No Longfellow translation for this line', { lang: 'en' });
         return;
       }
       // ── g ── grammar analysis
@@ -1086,16 +1144,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         analyzeGrammar();
         return;
       }
-      // ── a ── hear archaism explanation for current word
-      if (key === 'a' || key === 'A') {
-        e.preventDefault();
-        if (currentArchaism) {
-          speak(currentArchaism, { lang: 'en' });
-          announceToNvda(currentArchaism);
-        }
-        return;
-      }
-      // ── l ── literary translation of current line
+      // ── l ── live literary translation of current line (via API)
       if (key === 'l' || key === 'L') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
@@ -1116,25 +1165,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             announceToNvda(r.translation);
           })
           .catch(() => speak('Translation unavailable', { lang: 'en' }));
-        return;
-      }
-      // ── Delete ── speak Longfellow (literary) translation of current stanza
-      if (key === 'Delete') {
-        e.preventDefault();
-        const para = paragraphs[currentParagraphIndex];
-        if (para?.longfellowText) {
-          speak(para.longfellowText, { lang: 'en' });
-          announceToNvda(para.longfellowText);
-        }
-        return;
-      }
-      // ── s ── toggle speed between 1.0× and 1.5×
-      if (key === 's' || key === 'S') {
-        e.preventDefault();
-        const nextRate = ttsRate === 1.5 ? 1.0 : 1.5;
-        onRateToggle?.();
-        showStatus(`Speed: ${nextRate.toFixed(1)}×`);
-        speak(`Speed ${nextRate.toFixed(1)}`, { lang: 'en' });
         return;
       }
       // ── ↑ / ↓ ── fine-grained speed control
@@ -1291,12 +1321,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     if (isPoetryNonEn) {
       // Word lookup: per-paragraph API cache first, then flat static dict
       const perParaMap = glossWordCache.current.get(`${paraIdx}::en`);
-      const lookupEng = (word: string): string => {
-        const norm = normWord(word);
-        return perParaMap?.get(norm) ?? staticGlossRef.current?.get(norm) ?? '';
-      };
+      const lookupEng = (word: string) => resolveGloss(word, perParaMap, staticGlossRef.current);
       const hasGloss = !!(perParaMap || staticGlossRef.current);
-      // Longfellow text is stored as a single stanza with \n separating lines
       const longfellowLines = para.longfellowText?.split('\n') ?? [];
 
       // Split tokens into verse lines at newline-bearing space tokens
@@ -1320,7 +1346,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             const lfLine = longfellowLines[li]?.trim() ?? '';
             return (
               <div key={li} className={li > 0 ? 'mt-3' : ''}>
-                {/* Each word paired with its translation in one column — guaranteed alignment */}
+                {/* Each word paired with its gloss in one column */}
                 <div className="flex flex-wrap gap-x-3 gap-y-0">
                   {wordItems.map(({ token, origTi }) => {
                     const eng = hasGloss ? lookupEng(token.rawWord) : '';
@@ -1336,7 +1362,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                     );
                   })}
                 </div>
-                {/* Longfellow for this specific verse line */}
+                {/* Longfellow — 3rd line */}
                 {lfLine && (
                   <div className="font-mono text-base leading-snug text-slate-400 italic">
                     {lfLine}
@@ -1370,7 +1396,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 <div className="flex flex-wrap gap-x-2 gap-y-0">
                   {paraTokens.map((token, ti) => {
                     if (token.type !== 'word') return null;
-                    const eng = glossMap?.get(normWord(token.rawWord)) ?? staticMap?.get(normWord(token.rawWord)) ?? '';
+                    const eng = resolveGloss(token.rawWord, glossMap, staticMap);
                     const width = Math.max(token.rawWord.length, eng.length);
                     return (
                       <span key={ti} className="inline-flex items-baseline font-mono text-xs"
@@ -2097,14 +2123,20 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   ] as [string, string][],
                 },
                 {
+                  title: 'Translation Lines (current verse line)',
+                  rows: [
+                    ['a', 'Italian original'],
+                    ['s', 'Word-by-word English gloss'],
+                    ['d', 'Longfellow literary translation'],
+                  ] as [string, string][],
+                },
+                {
                   title: 'Study Tools',
                   rows: [
                     ['→  or  r', 'Enter recall / input mode'],
                     ['0', 'Add current word to flashcards (double-click a word also works)'],
                     ['g', 'Grammar analysis of current line'],
-                    ['a', `Hear archaism explanation — archaic words shown with violet underline`],
-                    ['l', `Literary ${selectedLang.label} translation of current line`],
-                    ['f', 'Search within paragraph'],
+                    ['l', `Live ${selectedLang.label} translation of current line (via API)`],
                   ] as [string, string][],
                 },
                 {

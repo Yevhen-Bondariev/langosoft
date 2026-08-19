@@ -100,7 +100,7 @@ export const api = {
   paragraphs: {
     archaisms: (paragraphId: number) =>
       req<{ archaisms: string }>(`/paragraphs/${paragraphId}/archaisms`),
-    gloss: (paragraphId: number, targetLanguage = 'English') =>
-      req<{ gloss: string }>(`/paragraphs/${paragraphId}/gloss?targetLanguage=${encodeURIComponent(targetLanguage)}`),
+    gloss: (paragraphId: number, targetLanguage = 'English', cacheOnly = false) =>
+      req<{ gloss: string }>(`/paragraphs/${paragraphId}/gloss?targetLanguage=${encodeURIComponent(targetLanguage)}${cacheOnly ? '&cacheOnly=true' : ''}`),
   },
 };
