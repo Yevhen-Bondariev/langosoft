@@ -318,7 +318,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     if (book.language === 'en') return;
     staticGlossRef.current = null;
     setStaticGlossLoaded(false);
-    fetch(`/gloss-${book.language}.json`)
+    fetch(`${import.meta.env.BASE_URL}gloss-${book.language}.json`)
       .then(r => r.ok ? r.json() : null)
       .then((data: Record<string, string> | null) => {
         if (data) {
