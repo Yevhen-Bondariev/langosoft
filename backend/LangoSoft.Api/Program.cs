@@ -90,6 +90,16 @@ using (var scope = app.Services.CreateScope())
           """;
     await ctx.Database.ExecuteSqlRawAsync(createGlossCache);
 
+    // Book.Language column (added after initial DB creation — Postgres needs an explicit patch)
+    try
+    {
+        var addLangCol = isPostgres
+            ? """ALTER TABLE "Books" ADD COLUMN IF NOT EXISTS "Language" TEXT NOT NULL DEFAULT 'en'"""
+            : """ALTER TABLE "Books" ADD COLUMN "Language" TEXT NOT NULL DEFAULT 'en'""";
+        await ctx.Database.ExecuteSqlRawAsync(addLangCol);
+    }
+    catch { /* column already exists (SQLite) or no-op (Postgres IF NOT EXISTS) */ }
+
     // FlashcardCategories table (default categories: beautiful, weird, difficult)
     var createCategories = isPostgres
         ? """

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppView, Book, Category, Chapter, Flashcard } from './types';
-import { api } from './services/api';
+import { api, BASE } from './services/api';
 import Reader from './components/Reader';
 import Flashcards from './components/Flashcards';
 import WordList from './components/WordList';
@@ -105,7 +105,7 @@ export default function App() {
         }, 90000);
 
       } catch {
-        if (mounted) setError('Cannot connect to backend at http://localhost:5000. Make sure it is running.');
+        if (mounted) setError(`Cannot connect to backend at ${BASE.replace('/api', '')}. If the server just woke up, wait 30 seconds and refresh.`);
       } finally {
         if (mounted) setIsLoading(false);
       }

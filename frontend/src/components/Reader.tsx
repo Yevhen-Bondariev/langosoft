@@ -192,6 +192,9 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [currentHint, setCurrentHint] = useState<PhonemeHint | null>(null);
   const [currentWordGloss, setCurrentWordGloss] = useState<string>('');
+  const [glossLoading, setGlossLoading] = useState(false);
+  const [glossCacheVersion, setGlossCacheVersion] = useState(0);
+  const glossFetchingRef = useRef<Set<string>>(new Set());
   const [grammarTenses, setGrammarTenses] = useState<string[] | null>(null);
   const [grammarLoading, setGrammarLoading] = useState(false);
   const [selectedTense, setSelectedTense] = useState<string | null>(null);
@@ -330,13 +333,19 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
 
   // Pre-fetch English word-by-word gloss for current paragraph + next two (non-English books only)
   useEffect(() => {
-    if (book.language === 'en') return;
+    if (book.language === 'en') { setGlossLoading(false); return; }
+
+    const currentCacheKey = `${currentParagraphIndex}::en`;
+    setGlossLoading(!glossWordCache.current.has(currentCacheKey));
 
     const fetchGloss = (idx: number) => {
       const para = paragraphs[idx];
       if (!para) return;
       const cacheKey = `${idx}::en`;
       if (glossWordCache.current.has(cacheKey)) return;
+      if (glossFetchingRef.current.has(cacheKey)) return;
+
+      glossFetchingRef.current.add(cacheKey);
       api.paragraphs.gloss(para.id, 'English')
         .then(r => {
           const map = new Map<string, string>();
@@ -351,9 +360,16 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
               if (dash > 0) map.set(normWord(entry.slice(0, dash).trim()), entry.slice(dash + 3).trim());
             });
           }
-          if (map.size > 0) glossWordCache.current.set(cacheKey, map);
+          if (map.size > 0) {
+            glossWordCache.current.set(cacheKey, map);
+            setGlossCacheVersion(v => v + 1);
+          }
+          if (cacheKey === currentCacheKey) setGlossLoading(false);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (cacheKey === currentCacheKey) setGlossLoading(false);
+        })
+        .finally(() => { glossFetchingRef.current.delete(cacheKey); });
     };
 
     fetchGloss(currentParagraphIndex);
@@ -362,6 +378,17 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const t2 = setTimeout(() => fetchGloss(currentParagraphIndex + 2), 1200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [currentParagraphIndex, paragraphs, book.language]);
+
+  // Reactively refresh displayed gloss when the cache populates (gloss arrives after navigation)
+  useEffect(() => {
+    if (book.language === 'en') { setCurrentWordGloss(''); return; }
+    const tokens = allTokens[currentParagraphIndex] ?? [];
+    const wTokens = getWordTokens(tokens);
+    const token = wTokens[currentWordIndex];
+    const word = token?.rawWord || token?.text || '';
+    const cacheMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
+    setCurrentWordGloss(word ? (cacheMap?.get(normWord(word)) ?? '') : '');
+  }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, glossCacheVersion]);
 
   // Fetch archaism annotations for the current paragraph (non-English books only, cached per paragraphId)
   useEffect(() => {
@@ -1256,8 +1283,12 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             : 0;
           return <span className="text-slate-600">Chapter {chapterPct}% · Book {bookPct}%</span>;
         })()}
-        {currentWordGloss && book.language !== 'en' && !statusMsg && (
-          <span className="text-sky-400 text-sm ml-auto italic">{currentWordGloss}</span>
+        {book.language !== 'en' && !statusMsg && (
+          currentWordGloss
+            ? <span className="text-sky-400 text-sm ml-auto italic">{currentWordGloss}</span>
+            : glossLoading
+            ? <span className="text-slate-500 text-sm ml-auto italic animate-pulse">translating…</span>
+            : null
         )}
         {statusMsg && <span className="text-amber-400 font-medium ml-auto" aria-live="polite" aria-atomic="true">{statusMsg}</span>}
       </div>
