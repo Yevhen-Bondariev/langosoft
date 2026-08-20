@@ -135,8 +135,8 @@ function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain, 
             key={idx}
             className={
               seg.kind === 'match'   ? 'text-slate-200' :
-              seg.kind === 'missing' ? 'text-red-400 line-through decoration-red-600 font-medium' :
-                                       'text-amber-400 italic'
+              seg.kind === 'missing' ? 'text-amber-400 font-medium' :
+                                       'text-red-400 line-through decoration-red-600'
             }
             aria-label={
               seg.kind === 'match'   ? seg.text :
@@ -151,8 +151,8 @@ function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain, 
 
       <div className="flex gap-4 text-xs text-slate-500">
         <span><span className="text-slate-300">word</span> = correct</span>
-        <span><span className="text-red-400 line-through">word</span> = missed</span>
-        <span><span className="text-amber-400 italic">word</span> = extra</span>
+        <span><span className="text-amber-400">word</span> = missed</span>
+        <span><span className="text-red-400 line-through">word</span> = extra</span>
       </div>
 
       {explanation ? (
@@ -1398,6 +1398,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
       const lookupEng = (word: string) => resolveGloss(word, perParaMap, staticGlossRef.current);
       const hasGloss = !!(perParaMap || staticGlossRef.current);
       const longfellowLines = para.longfellowText?.split('\n') ?? [];
+      const ukrainianLines = para.ukrainianText?.split('\n') ?? [];
 
       // Split tokens into verse lines at newline-bearing space tokens
       const lineGroups: Array<Array<{ token: (typeof paraTokens)[number]; origTi: number }>> = [];
@@ -1418,6 +1419,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           {lineGroups.map((lineItems, li) => {
             const wordItems = lineItems.filter(({ token }) => token.type === 'word');
             const lfLine = longfellowLines[li]?.trim() ?? '';
+            const ukLine = ukrainianLines[li]?.trim() ?? '';
             return (
               <div key={li} className={li > 0 ? 'mt-3' : ''}>
                 {/* Each word paired with its gloss in one column */}
@@ -1442,6 +1444,12 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                     {lfLine}
                   </div>
                 )}
+                {/* Ukrainian — 4th line */}
+                {ukLine && (
+                  <div className="font-mono text-base leading-snug text-amber-300 italic">
+                    {ukLine}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1463,7 +1471,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           const staticMap = staticGlossRef.current;
           const wTokens = getWordTokens(paraTokens);
           const hasLiteral = (glossMap || staticMap) && wTokens.length > 0;
-          if (!hasLiteral && !para.longfellowText) return null;
+          if (!hasLiteral && !para.longfellowText && !para.ukrainianText) return null;
           return (
             <div className="mt-2 space-y-1">
               {hasLiteral && (
@@ -1484,6 +1492,11 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
               {para.longfellowText && (
                 <p className="text-slate-500 italic text-sm leading-snug">
                   {para.longfellowText}
+                </p>
+              )}
+              {para.ukrainianText && (
+                <p className="text-amber-300 italic text-sm leading-snug">
+                  {para.ukrainianText}
                 </p>
               )}
             </div>

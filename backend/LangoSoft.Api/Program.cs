@@ -166,6 +166,16 @@ using (var scope = app.Services.CreateScope())
     }
     catch { /* column already exists */ }
 
+    // UkrainianText column on Paragraphs (Strikha/Drobyazko Ukrainian translation, 4th display line)
+    try
+    {
+        var addUkrainianCol = isPostgres
+            ? """ALTER TABLE "Paragraphs" ADD COLUMN IF NOT EXISTS "UkrainianText" TEXT NULL"""
+            : """ALTER TABLE "Paragraphs" ADD COLUMN "UkrainianText" TEXT NULL""";
+        await ctx.Database.ExecuteSqlRawAsync(addUkrainianCol);
+    }
+    catch { /* column already exists */ }
+
     // Seed default categories once
     var hasDefaults = await ctx.FlashcardCategories.AnyAsync(c => c.IsDefault);
     if (!hasDefaults)

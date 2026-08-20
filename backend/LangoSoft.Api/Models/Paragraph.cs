@@ -9,4 +9,5 @@ public class Paragraph
     public string? LongfellowText { get; set; }
     public string? DeeplText { get; set; }
     public string? RefinedText { get; set; }
+    public string? UkrainianText { get; set; }
 }

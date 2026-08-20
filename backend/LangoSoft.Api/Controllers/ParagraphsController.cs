@@ -117,6 +117,16 @@ public class ParagraphsController(AppDbContext db, WordService wordService) : Co
         return NoContent();
     }
 
+    [HttpPatch("{id:int}/ukrainian")]
+    public async Task<IActionResult> SetUkrainianText(int id, [FromBody] string text)
+    {
+        var para = await db.Paragraphs.FindAsync(id);
+        if (para == null) return NotFound();
+        para.UkrainianText = text;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     public record SeedGlossRequest(string GlossJson, string TargetLanguage = "English");
 
     // Development-only: seed a pre-computed gloss into the cache (bypasses Groq for testing).

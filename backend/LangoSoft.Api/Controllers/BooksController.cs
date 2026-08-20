@@ -44,7 +44,7 @@ public class BooksController(AppDbContext db, BookImportService importService, W
 
         var paragraphs = chapter.Paragraphs
             .OrderBy(p => p.Index)
-            .Select(p => new ParagraphDto(p.Id, p.ChapterId, p.Index, p.Text, p.LongfellowText, p.DeeplText, p.RefinedText))
+            .Select(p => new ParagraphDto(p.Id, p.ChapterId, p.Index, p.Text, p.LongfellowText, p.DeeplText, p.RefinedText, p.UkrainianText))
             .ToList();
 
         return Ok(paragraphs);

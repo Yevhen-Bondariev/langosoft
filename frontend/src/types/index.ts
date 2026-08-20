@@ -22,6 +22,7 @@ export interface Paragraph {
   longfellowText?: string;
   deeplText?: string;
   refinedText?: string;
+  ukrainianText?: string;
 }
 
 export interface Category {
