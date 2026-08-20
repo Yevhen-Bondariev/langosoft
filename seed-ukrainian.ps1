@@ -10,10 +10,9 @@
 param(
     [int]$CantoStart = 1,
     [int]$CantoEnd   = 34,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [string]$ApiBase = "http://localhost:5000"
 )
-
-$ApiBase = "http://localhost:5000"
 $BookId  = 5
 
 function Get-UkrainianStanzas([int]$canto) {
