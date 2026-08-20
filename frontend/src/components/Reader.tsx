@@ -102,7 +102,7 @@ function playFailure() {
   playTone(220, 0.15, 'sawtooth', 0.2); setTimeout(() => playTone(196, 0.2, 'sawtooth', 0.15), 160);
 }
 
-function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain, onHear, onHearTranslation, onClose }: {
+function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain: _onExplain, onHear: _onHear, onHearTranslation: _onHearTranslation, onClose }: {
   diff: DiffSegment[];
   explanation: string | null;
   explainLoading: boolean;
@@ -228,7 +228,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [statusMsg, setStatusMsg] = useState('');
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [currentHint, setCurrentHint] = useState<PhonemeHint | null>(null);
-  const [currentWordGloss, setCurrentWordGloss] = useState<string>('');
+  const [, setCurrentWordGloss] = useState<string>('');
   const [, setGlossLoading] = useState(false);
   const [glossCacheVersion, setGlossCacheVersion] = useState(0);
   const glossFetchingRef = useRef<Set<string>>(new Set());
@@ -771,8 +771,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     if (!target) return;
     const diff = wordDiff(target, recallInput);
     setRecallDiff(diff);
-    const { correct, total, missing } = recallScore(diff);
-    const extra = diff.filter(s => s.kind === 'extra').map(s => s.text);
+    const { correct, total } = recallScore(diff);
     if (correct === total) {
       playSuccess();
     } else {

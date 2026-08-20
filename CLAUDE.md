@@ -5,7 +5,7 @@
 Run the TypeScript compiler check and confirm it passes before committing:
 
 ```
-cd frontend && npx tsc --noEmit
+cd frontend && npx tsc --noEmit -p tsconfig.app.json
 ```
 
 Do not push if there are any errors.
