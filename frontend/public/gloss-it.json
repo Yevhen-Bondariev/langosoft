@@ -37,7 +37,6 @@
     "ammanto":  "cloak",
     "citta":  "city",
     "sara":  "will be",
-    "si":  "self",
     "far":  "to do",
     "dimmi":  "Tell me",
     "andare":  "to go",
@@ -750,7 +749,6 @@
     "quale":  "which",
     "ritornar":  "return",
     "virtu":  "virtue",
-    "ne":  "ne",
     "stilo":  "stylus",
     "lГ ":  "there",
     "lascia":  "leave",
@@ -839,5 +837,15 @@
     "campar":  "to escape",
     "anchise":  "Anchises",
     "vòlto":  "turned",
-    "temp":  "time"
+    "temp":  "time",
+    "sì":  "so",
+    "ché":  "for",
+    "ne":  "of it",
+    "là":  "there",
+    "più":  "more",
+    "sé":  "oneself",
+    "né":  "nor",
+    "sù":  "up",
+    "si":  "himself",
+    "dà":  "gives"
 }

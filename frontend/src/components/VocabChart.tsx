@@ -69,7 +69,7 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
   const areaPoints = coverages.length > 0
     ? `${origin} ${coverages.map((v, i) => `${px(i + 1)},${py(v)}`).join(' ')} ${px(chapterCount)},${PAD.top + CH}`
     : '';
-  const deltaPoints = `${origin} ${deltas.map((v, i) => `${px(i + 1)},${pyR(v)}`).join(' ')}`;
+  const deltaPoints = deltas.map((v, i) => `${px(i + 1)},${pyR(v)}`).join(' ');
 
   const yGridLines = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
   const yRightLabels = Array.from(

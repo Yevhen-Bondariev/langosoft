@@ -40,7 +40,9 @@ const resolveGloss = (
   if (direct) return direct;
   const norm = normWord(rawWord);
   if (norm !== soft) {
-    const stripped = lookup(norm);
+    // Only check static — cache uses softNorm keys so a normWord lookup
+    // would cross accent-pairs (sì→si→"himself" instead of "so").
+    const stripped = staticMap?.get(norm);
     if (stripped) return stripped;
   }
   if (/['\u2018\u2019\u02BC`]/.test(rawWord)) {
@@ -475,7 +477,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
           try {
             const obj = JSON.parse(r.gloss) as Record<string, string>;
             for (const [word, tr] of Object.entries(obj)) {
-              if (typeof tr === 'string') map.set(normWord(word), tr);
+              if (typeof tr === 'string') map.set(softNorm(word), tr);
             }
           } catch {
             r.gloss.split(';').forEach(entry => {
@@ -520,7 +522,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
             try {
               const obj = JSON.parse(r.gloss) as Record<string, string>;
               for (const [word, tr] of Object.entries(obj)) {
-                if (typeof tr === 'string') map.set(normWord(word), tr);
+                if (typeof tr === 'string') map.set(softNorm(word), tr);
               }
             } catch {
               r.gloss.split(';').forEach(entry => {
