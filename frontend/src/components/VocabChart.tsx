@@ -60,7 +60,7 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
     : '';
 
   const yGridLines = Array.from({ length: Math.floor(maxY / 10) + 1 }, (_, i) => i * 10);
-  const xLabels = [1, 5, 10, 15, 20, 25, 34, 40, 50, 60, 67, 75, 84, 90, 100].filter(n => n <= chapterCount);
+  const xLabels = Array.from({ length: Math.ceil(chapterCount / 5) }, (_, i) => (i + 1) * 5).filter(n => n <= chapterCount);
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current || coverages.length === 0) return;
