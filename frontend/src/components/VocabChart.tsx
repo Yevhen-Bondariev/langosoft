@@ -34,7 +34,7 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
     fetches.forEach(p => p.then(() => { done++; setLoaded(done); }));
     Promise.all(fetches).then(chapters => {
       const seen = new Set<string>();
-      const result: number[] = [];
+      const rawCounts: number[] = [];
       for (const paras of chapters) {
         for (const para of paras) {
           for (const tok of getWordTokens(tokenizeParagraph(para.text))) {
@@ -42,9 +42,11 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
             if (key) seen.add(key);
           }
         }
-        result.push(seen.size / totalVocab * 100);
+        rawCounts.push(seen.size);
       }
-      setCoverages(result);
+      // Use the final seen.size as denominator — same normalization as numerator, so max is exactly 100%
+      const trueTotal = seen.size;
+      setCoverages(rawCounts.map(c => trueTotal > 0 ? c / trueTotal * 100 : 0));
     }).catch(() => {});
   }, [bookId, chapterCount, totalVocab]);
 
@@ -60,7 +62,7 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
     : '';
 
   const yGridLines = Array.from({ length: Math.floor(maxY / 10) + 1 }, (_, i) => i * 10);
-  const xLabels = Array.from({ length: Math.ceil(chapterCount / 5) }, (_, i) => (i + 1) * 5).filter(n => n <= chapterCount);
+  const xLabels = [0, ...Array.from({ length: Math.ceil(chapterCount / 5) }, (_, i) => (i + 1) * 5).filter(n => n <= chapterCount)];
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current || coverages.length === 0) return;
