@@ -47,7 +47,7 @@ public class ParagraphsController(AppDbContext db, WordService wordService) : Co
     public record GlossResponse(string Gloss);
 
     [HttpGet("{id:int}/gloss")]
-    public async Task<ActionResult<GlossResponse>> GetGloss(int id, [FromQuery] string targetLanguage = "English")
+    public async Task<ActionResult<GlossResponse>> GetGloss(int id, [FromQuery] string targetLanguage = "English", [FromQuery] bool cacheOnly = false)
     {
         var cached = await db.ParagraphGlossCaches
             .FirstOrDefaultAsync(g => g.ParagraphId == id && g.TargetLanguage == targetLanguage);
@@ -56,6 +56,9 @@ public class ParagraphsController(AppDbContext db, WordService wordService) : Co
         if (cached != null && cached.GlossJson.TrimStart().StartsWith('{') &&
             cached.GlossJson.TrimEnd().EndsWith('}') && cached.GlossJson.Length > 2)
             return Ok(new GlossResponse(cached.GlossJson));
+
+        if (cacheOnly)
+            return Ok(new GlossResponse("{}"));
 
         var paragraph = await db.Paragraphs
             .Include(p => p.Chapter).ThenInclude(c => c.Book)
@@ -82,6 +85,36 @@ public class ParagraphsController(AppDbContext db, WordService wordService) : Co
         }
 
         return Ok(new GlossResponse(gloss));
+    }
+
+    [HttpPatch("{id:int}/deepl")]
+    public async Task<IActionResult> SetDeeplText(int id, [FromBody] string text)
+    {
+        var para = await db.Paragraphs.FindAsync(id);
+        if (para == null) return NotFound();
+        para.DeeplText = text;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPatch("{id:int}/refined")]
+    public async Task<IActionResult> SetRefinedText(int id, [FromBody] string text)
+    {
+        var para = await db.Paragraphs.FindAsync(id);
+        if (para == null) return NotFound();
+        para.RefinedText = text;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}/refined")]
+    public async Task<IActionResult> ClearRefinedText(int id)
+    {
+        var para = await db.Paragraphs.FindAsync(id);
+        if (para == null) return NotFound();
+        para.RefinedText = null;
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 
     public record SeedGlossRequest(string GlossJson, string TargetLanguage = "English");

@@ -169,22 +169,12 @@ function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain, 
           className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-medium transition-colors">
           Retry (r)
         </button>
-        {!explanation && !explainLoading && onExplain && (
-          <button onClick={onExplain}
-            className="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 rounded text-xs font-medium transition-colors">
-            Explain differences (e)
-          </button>
-        )}
-        <button onClick={onHear}
-          className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-medium transition-colors">
-          Hear English (8)
+        <button
+          disabled
+          title="Coming soon"
+          className="px-3 py-1.5 bg-slate-800 text-slate-600 rounded text-xs font-medium cursor-not-allowed">
+          Explain differences
         </button>
-        {onHearTranslation && (
-          <button onClick={onHearTranslation}
-            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-xs font-medium transition-colors">
-            Hear translation (t)
-          </button>
-        )}
         <button onClick={onClose}
           className="ml-auto text-slate-600 hover:text-slate-400 text-xs transition-colors">
           Close (Esc)
@@ -255,9 +245,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [recallDiff, setRecallDiff] = useState<DiffSegment[] | null>(null);
   const [recallExplanation, setRecallExplanation] = useState<string | null>(null);
   const [recallExplainLoading, setRecallExplainLoading] = useState(false);
-  // Translation mode: AI evaluator result (replaces wordDiff when recallToTranslation = true)
-  const [translationFeedback, setTranslationFeedback] = useState<string | null>(null);
-  const [translationFeedbackLoading, setTranslationFeedbackLoading] = useState(false);
+  const recallScrollPos = useRef(0);
   const recallTextareaRef = useRef<HTMLTextAreaElement>(null);
   const customQuestionRef = useRef<HTMLTextAreaElement>(null);
   const currentWordRef = useRef<HTMLSpanElement | null>(null);
@@ -332,6 +320,8 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [recallHintLiterary, setRecallHintLiterary] = useState('');
   const [recallHintLiteral, setRecallHintLiteral] = useState('');
   const [recallHintLoading, setRecallHintLoading] = useState(false);
+  const [recallParaTranslation, setRecallParaTranslation] = useState('');
+  const [recallGlossLine, setRecallGlossLine] = useState('');
   const [nvdaAnnounce, setNvdaAnnounce] = useState('');
   // Pre-tokenize all paragraphs once when the chapter loads (not on every keystroke)
   const allTokens = useMemo(() => paragraphs.map(p => tokenizeParagraph(p.text)), [paragraphs]);
@@ -721,16 +711,32 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     if (!para) return;
     const sentence = lineAtWord(para.text, currentWordIndex);
     if (!sentence) return;
+    recallScrollPos.current = readingPaneRef.current?.scrollTop ?? 0;
     setRecallSentence(sentence);
     setRecallInput('');
     setRecallDiff(null);
     setRecallExplanation(null);
-    setTranslationFeedback(null);
     setCustomQuestionOpen(false);
     setCustomQuestion('');
     setCustomAnswer(null);
     setRecallHintLiterary('');
     setRecallHintLiteral('');
+    const fullTrans = para.refinedText || para.longfellowText || para.deeplText || '';
+    let lineTrans = fullTrans;
+    if (fullTrans && para.text.includes('\n')) {
+      const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex);
+      const transLines = fullTrans.split('\n').filter(l => l.trim());
+      if (transLines[lineIndex]) lineTrans = transLines[lineIndex].trim();
+    }
+    setRecallParaTranslation(lineTrans);
+    // Build word-by-word gloss for this line (the "2nd line" in the display)
+    const sentenceTokens = tokenizeParagraph(sentence);
+    const glossMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
+    const glossLine = getWordTokens(sentenceTokens)
+      .map(tok => resolveGloss(tok.rawWord || tok.text, glossMap, staticGlossRef.current))
+      .filter(Boolean)
+      .join(' ');
+    setRecallGlossLine(glossLine);
     setRecallToTranslation(true);
     setRecallMode(true);
     setTimeout(() => recallTextareaRef.current?.focus(), 50);
@@ -751,54 +757,38 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
 
   const submitRecall = useCallback(() => {
     if (!recallInput.trim()) return;
-    if (recallToTranslation) {
-      // Translation mode: AI evaluates the meaning, not exact words
-      if (!recallSentence) return;
-      setTranslationFeedbackLoading(true);
-      api.words.evaluateTranslation(recallSentence, recallInput, book.language, selectedLang.name)
-        .then(r => {
-          const feedback = r.feedback || 'Unable to evaluate — no AI response.';
-          setTranslationFeedback(feedback);
-          if (feedback.startsWith('Correct')) {
-            playSuccess();
-            setTimeout(() => speak('Correct!'), 350);
-          } else {
-            playFailure();
-            setTimeout(() => speak(feedback, { lang: 'en' }), 400);
-          }
-        })
-        .catch(() => {
-          setTranslationFeedback('Evaluation failed — check your connection.');
-          playFailure();
-        })
-        .finally(() => setTranslationFeedbackLoading(false));
+    const target = recallToTranslation
+      ? (recallGlossLine || recallParaTranslation)
+      : recallSentence;
+    if (!target) return;
+    const diff = wordDiff(target, recallInput);
+    setRecallDiff(diff);
+    const { correct, total, missing } = recallScore(diff);
+    const extra = diff.filter(s => s.kind === 'extra').map(s => s.text);
+    if (correct === total) {
+      playSuccess();
     } else {
-      // Recall mode: exact word-diff against the original Italian
-      const target = recallSentence;
-      if (!target) return;
-      const diff = wordDiff(target, recallInput);
-      setRecallDiff(diff);
-      const { correct, total, missing } = recallScore(diff);
-      const extra = diff.filter(s => s.kind === 'extra').map(s => s.text);
-      if (correct === total) {
-        playSuccess();
-        setTimeout(() => speak('Correct!'), 350);
-      } else {
-        playFailure();
-        const parts: string[] = [];
-        if (missing.length) parts.push(`Missing: ${missing.join(', ')}.`);
-        if (extra.length) parts.push(`Wrong: ${extra.join(', ')}.`);
-        setTimeout(() => speak(parts.join(' ')), 400);
-      }
+      playFailure();
     }
-  }, [recallSentence, recallInput, speak, recallToTranslation, book.language, selectedLang.name]);
+  }, [recallSentence, recallGlossLine, recallParaTranslation, recallInput, recallToTranslation]);
 
   const retryRecall = useCallback(() => {
     setRecallDiff(null);
     setRecallExplanation(null);
-    setTranslationFeedback(null);
     setRecallInput('');
     setTimeout(() => recallTextareaRef.current?.focus(), 50);
+  }, []);
+
+  const exitRecall = useCallback(() => {
+    setRecallMode(false);
+    setRecallDiff(null);
+    setRecallInput('');
+    setCustomQuestionOpen(false);
+    setCustomQuestion('');
+    setCustomAnswer(null);
+    requestAnimationFrame(() => {
+      if (readingPaneRef.current) readingPaneRef.current.scrollTop = recallScrollPos.current;
+    });
   }, []);
 
   const explainRecall = useCallback(async () => {
@@ -926,29 +916,22 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
 
       // Input mode captures all keys
       if (recallMode) {
+        // Ctrl = stop TTS (same as reading mode)
+        if (e.key === 'Control' && !e.altKey && !e.shiftKey && !e.metaKey) {
+          stop(); e.preventDefault(); return;
+        }
         // ← exits input mode (only when not typing in textarea)
         if (e.key === 'ArrowLeft' && !inInput) {
-          setRecallMode(false); setRecallDiff(null); setRecallInput('');
-          setTranslationFeedback(null);
-          setCustomQuestionOpen(false); setCustomQuestion(''); setCustomAnswer(null);
-          e.preventDefault(); return;
+          exitRecall(); e.preventDefault(); return;
         }
-        // 8 = in translation mode: hear original; in recall mode: hear literary hint
+        // 8 = in IT-EN mode: hear Italian original; in EN-IT mode: hear English hint
         if ((e.key === '8' || e.code === 'Numpad8') && !inInput) {
           if (recallToTranslation) {
             speak(recallSentence); announceToNvda(recallSentence);
           } else {
-            const t = recallHintLiterary || recallHintLiteral;
-            if (t) { speak(t, { lang: selectedLang.code }); announceToNvda(t); }
-          }
-          e.preventDefault(); return;
-        }
-        // 5 = in translation mode: hear literary (model answer); in recall mode: hear literal
-        if ((e.key === '5' || e.code === 'Numpad5') && !inInput) {
-          if (recallToTranslation) {
-            if (recallHintLiterary) { speak(recallHintLiterary, { lang: selectedLang.code }); announceToNvda(recallHintLiterary); }
-          } else {
-            if (recallHintLiteral) { speak(recallHintLiteral, { lang: selectedLang.code }); announceToNvda(recallHintLiteral); }
+            const apiHint = recallHintLiterary || recallHintLiteral;
+            const t = apiHint || recallParaTranslation;
+            if (t) { speak(t, { lang: apiHint ? selectedLang.code : 'en' }); announceToNvda(t); }
           }
           e.preventDefault(); return;
         }
@@ -967,8 +950,14 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           if (customAnswer) speak(customAnswer, { lang: 'en' });
           e.preventDefault(); return;
         }
+        // Ctrl+Space = toggle It↔En direction
+        if (e.key === ' ' && e.ctrlKey) {
+          setRecallToTranslation(v => !v); setRecallDiff(null); setRecallInput('');
+          setTimeout(() => recallTextareaRef.current?.focus(), 50);
+          e.preventDefault(); return;
+        }
         // Enter / r after result = retry
-        if ((e.key === 'Enter' || e.key === 'r' || e.key === 'R') && !inInput && (recallDiff !== null || translationFeedback !== null)) {
+        if ((e.key === 'Enter' || e.key === 'r' || e.key === 'R') && !inInput && recallDiff !== null) {
           retryRecall(); e.preventDefault(); return;
         }
         // e after exact-diff result = explain (not available in translation mode)
@@ -1281,8 +1270,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     wordTokens, chapterNum, showPhonemeHints,
     readCurrentLine, goToWord, goToParagraph, goToChapter,
     openAddFlashcard, submitFlashcard, speak, stop, analyzeGrammar,
-    recallMode, recallToTranslation, recallDiff, recallHintLiterary, recallHintLiteral, recallSentence, selectedLang.code, selectedLang.name,
-    translationFeedback, retryRecall, explainRecall, enterRecall, announceToNvda,
+    recallMode, recallToTranslation, recallDiff, recallHintLiterary, recallHintLiteral, recallParaTranslation, recallSentence, selectedLang.code, selectedLang.name,
+    retryRecall, explainRecall, enterRecall, exitRecall, announceToNvda,
     customQuestionOpen, customAnswer, submitCustomQuestion,
     saveProgress, book.language, ttsRate, onRateToggle, onRateChange, showStatus,
     showFlowGuide, showKeyboardRef, playLineBell, currentArchaism, playArchaismTone,
@@ -1609,9 +1598,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             </span>
           );
         })()}
-        {book.language !== 'en' && !statusMsg && currentWordGloss && (
-          <span className="text-sky-400 text-sm ml-auto italic">{currentWordGloss}</span>
-        )}
         {statusMsg && <span className="text-amber-400 font-medium ml-auto" aria-live="polite" aria-atomic="true">{statusMsg}</span>}
       </div>
 
@@ -1771,34 +1757,37 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   </p>
                   <p style={{ color: '#fbbf24', fontSize: '1.1rem', lineHeight: 1.7 }} lang={book.language}>{recallSentence}</p>
                   {recallHintLoading && <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '0.5rem' }}>Loading hints…</p>}
-                  {!recallHintLoading && recallHintLiterary && (
-                    <p style={{ color: '#334155', fontSize: '0.7rem', marginTop: '0.5rem' }}>5 to hear the model {selectedLang.label} answer</p>
-                  )}
                 </>
               ) : (
-                /* Recall mode: show Ukrainian translation hints */
+                /* En→It mode: show translation hints; fall back to original if unavailable */
                 <>
-                  <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-                    {selectedLang.label} — press 8 to hear
-                  </p>
-                  <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literary</p>
                   {recallHintLoading ? (
-                    <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Translating…</p>
+                    <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Translating…</p>
                   ) : recallHintLiterary ? (
-                    <p style={{ color: '#e2e8f0', fontSize: '1.05rem', lineHeight: 1.7, marginBottom: '0.75rem' }} aria-live="polite">{recallHintLiterary}</p>
+                    <>
+                      <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
+                        {selectedLang.label} — press 8 to hear
+                      </p>
+                      <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literary</p>
+                      <p style={{ color: '#e2e8f0', fontSize: '1.05rem', lineHeight: 1.7, marginBottom: '0.75rem' }} aria-live="polite">{recallHintLiterary}</p>
+                      {recallHintLiteral && (
+                        <div style={{ borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
+                          <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literal</p>
+                          <p style={{ color: '#cbd5e1', fontSize: '1.0rem', lineHeight: 1.65, fontStyle: 'italic' }}>{recallHintLiteral}</p>
+                        </div>
+                      )}
+                    </>
+                  ) : recallParaTranslation ? (
+                    /* Stored stanza translation as fallback */
+                    <>
+                      <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                        Translation — press 8 to hear
+                      </p>
+                      <p style={{ color: '#e2e8f0', fontSize: '1.0rem', lineHeight: 1.7 }}>{recallParaTranslation}</p>
+                    </>
                   ) : (
-                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Unavailable</p>
+                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Translation unavailable</p>
                   )}
-                  <div style={{ borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
-                    <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literal</p>
-                    {recallHintLoading ? (
-                      <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Translating…</p>
-                    ) : recallHintLiteral ? (
-                      <p style={{ color: '#cbd5e1', fontSize: '1.0rem', lineHeight: 1.65, fontStyle: 'italic' }}>{recallHintLiteral}</p>
-                    ) : (
-                      <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Unavailable</p>
-                    )}
-                  </div>
                 </>
               )}
             </div>
@@ -1816,8 +1805,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitCustomQuestion(); }
                     if (e.key === 'Escape') { e.preventDefault(); setCustomQuestionOpen(false); setTimeout(() => recallTextareaRef.current?.focus(), 50); }
-                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); } else { const t = recallHintLiterary || recallHintLiteral; if (t) { speak(t, { lang: selectedLang.code }); } } }
-                    if (e.key === '5') { e.preventDefault(); if (recallToTranslation) { if (recallHintLiterary) speak(recallHintLiterary, { lang: selectedLang.code }); } else { if (recallHintLiteral) speak(recallHintLiteral, { lang: selectedLang.code }); } }
+                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); } else { const ah = recallHintLiterary || recallHintLiteral; const t = ah || recallParaTranslation; if (t) { speak(t, { lang: ah ? selectedLang.code : 'en' }); } } }
                     if (e.key === '2') { e.preventDefault(); if (customAnswer) speak(customAnswer, { lang: 'en' }); }
                   }}
                   rows={2}
@@ -1836,51 +1824,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
               </div>
             )}
 
-            {translationFeedbackLoading ? (
-              /* AI evaluating translation */
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <p style={{ color: '#818cf8', fontSize: '0.95rem' }} aria-live="polite">Evaluating translation…</p>
-              </div>
-            ) : translationFeedback !== null ? (
-              /* Translation evaluation result */
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div
-                  style={{
-                    background: translationFeedback.startsWith('Correct') ? 'rgba(22,101,52,0.35)' : 'rgba(30,27,75,0.6)',
-                    border: `1px solid ${translationFeedback.startsWith('Correct') ? 'rgba(74,222,128,0.3)' : 'rgba(99,102,241,0.3)'}`,
-                    borderRadius: '0.5rem', padding: '0.875rem',
-                  }}
-                  role="status" aria-live="polite"
-                >
-                  <p style={{ color: '#94a3b8', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                    AI evaluation
-                  </p>
-                  <p style={{
-                    color: translationFeedback.startsWith('Correct') ? '#86efac' : '#c7d2fe',
-                    fontSize: '0.95rem', lineHeight: 1.65, whiteSpace: 'pre-line',
-                  }}>
-                    {translationFeedback}
-                  </p>
-                </div>
-                <div style={{ color: '#475569', fontSize: '0.75rem' }}>
-                  Your answer: <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>{recallInput}</span>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={retryRecall}
-                    style={{ padding: '0.375rem 0.75rem', background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '0.375rem', fontSize: '0.8rem', cursor: 'pointer' }}
-                  >Retry (r)</button>
-                  <button
-                    onClick={() => { speak(recallSentence, { lang: book.language }); announceToNvda(recallSentence); }}
-                    style={{ padding: '0.375rem 0.75rem', background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '0.375rem', fontSize: '0.8rem', cursor: 'pointer' }}
-                  >Hear {bookLangName} (8)</button>
-                  <button
-                    onClick={() => { setRecallMode(false); setTranslationFeedback(null); setRecallInput(''); }}
-                    style={{ marginLeft: 'auto', padding: '0.375rem 0.75rem', background: 'transparent', color: '#475569', border: 'none', fontSize: '0.8rem', cursor: 'pointer' }}
-                  >Close (←)</button>
-                </div>
-              </div>
-            ) : recallDiff === null ? (
+            {recallDiff === null ? (
               /* Typing area */
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '0.75rem' }}>
                 <label style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }} htmlFor="recall-input">
@@ -1893,24 +1837,23 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onChange={e => setRecallInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitRecall(); }
-                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); announceToNvda(recallSentence); } else { const t = recallHintLiterary || recallHintLiteral; if (t) { speak(t, { lang: selectedLang.code }); announceToNvda(t); } } }
-                    if (e.key === '5') { e.preventDefault(); if (recallToTranslation) { if (recallHintLiterary) { speak(recallHintLiterary, { lang: selectedLang.code }); announceToNvda(recallHintLiterary); } } else { if (recallHintLiteral) { speak(recallHintLiteral, { lang: selectedLang.code }); announceToNvda(recallHintLiteral); } } }
+                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); announceToNvda(recallSentence); } else { const ah = recallHintLiterary || recallHintLiteral; const t = ah || recallParaTranslation; if (t) { speak(t, { lang: ah ? selectedLang.code : 'en' }); announceToNvda(t); } } }
                     if (e.key === '2') { e.preventDefault(); if (customAnswer) speak(customAnswer, { lang: 'en' }); }
                     if (e.key === '0') { e.preventDefault(); setCustomQuestionOpen(open => { const next = !open; if (next) setTimeout(() => customQuestionRef.current?.focus(), 50); else setTimeout(() => recallTextareaRef.current?.focus(), 50); return next; }); }
                   }}
                   rows={5}
                   placeholder={recallToTranslation ? `Type the ${selectedLang.label} translation…` : 'Type from memory…'}
                   style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '0.5rem', padding: '0.75rem', color: '#f1f5f9', fontSize: '1.1rem', lineHeight: 1.65, resize: 'none', outline: 'none', flex: 1, minWidth: 0 }}
-                  aria-label={recallToTranslation ? `Type the ${selectedLang.label} translation. Press Enter to check, 8 to hear original, 5 for model answer.` : 'Type the original from memory. Press Enter to check, 8 to hear the hint.'}
+                  aria-label={recallToTranslation ? `Type the ${selectedLang.label} translation. Press Enter to check, 8 to hear original.` : 'Type the original from memory. Press Enter to check, 8 to hear the hint.'}
                 />
                 <p style={{ color: '#475569', fontSize: '0.75rem' }}>
                   {recallToTranslation
-                    ? `Enter to check · 8 ${bookLangName} · 5 model ${selectedLang.label} · ← back`
-                    : `Enter to check · 8 ${selectedLang.label} · 5 literal · ← back`}
+                    ? `Enter to check · 8 ${bookLangName} · ← back`
+                    : `Enter to check · 8 ${selectedLang.label} · ← back`}
                 </p>
               </div>
             ) : (
-              /* Recall mode exact diff result */
+              /* Diff result */
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 <RecallResults
                   diff={recallDiff}
@@ -1919,7 +1862,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onRetry={retryRecall}
                   onExplain={explainRecall}
                   onHear={() => speak(recallSentence)}
-                  onClose={() => { setRecallMode(false); setRecallDiff(null); setRecallInput(''); }}
+                  onClose={exitRecall}
                 />
                 <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '0.75rem' }}>
                   Enter to retry · ← back
@@ -1948,8 +1891,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             onHearAnswer={() => { if (recallHintLiterary) { speak(recallHintLiterary, { lang: selectedLang.code }); announceToNvda(recallHintLiterary); } }}
             onCheck={() => submitRecall()}
             onRetry={() => retryRecall()}
-            onBack={() => { setRecallMode(false); setRecallDiff(null); setTranslationFeedback(null); setRecallInput(''); }}
-            hasResult={recallDiff !== null || translationFeedback !== null}
+            onBack={exitRecall}
+            hasResult={recallDiff !== null}
           />
         ) : (
           <MobileActionBar
@@ -1974,25 +1917,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
       <div className="px-4 py-2 bg-slate-900 border-t border-slate-700 shrink-0">
         {recallMode ? (
           <div role="toolbar" aria-label="Recall shortcuts" className="flex items-center gap-1 flex-wrap">
-            <button
-              aria-label="Hear original (8)"
-              aria-keyshortcuts="8"
-              onClick={() => { speak(recallSentence, { lang: book.language }); announceToNvda(recallSentence); }}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Hear original</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">8</kbd>
-            </button>
-            <button
-              aria-label="Model answer (5)"
-              aria-keyshortcuts="5"
-              onClick={() => { if (recallHintLiterary) { speak(recallHintLiterary, { lang: selectedLang.code }); announceToNvda(recallHintLiterary); } }}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Model answer</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">5</kbd>
-            </button>
-            {recallDiff === null && translationFeedback === null && (
+            {recallDiff === null && (
               <button
                 aria-label="Check (Enter)"
                 aria-keyshortcuts="Enter"
@@ -2003,7 +1928,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">Enter</kbd>
               </button>
             )}
-            {(recallDiff !== null || translationFeedback !== null) && (
+            {recallDiff !== null && (
               <button
                 aria-label="Retry (r)"
                 aria-keyshortcuts="r"
@@ -2012,17 +1937,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
               >
                 <span className="text-[10px] leading-none mb-0.5">Retry</span>
                 <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">r</kbd>
-              </button>
-            )}
-            {!recallToTranslation && recallDiff !== null && (
-              <button
-                aria-label="Explain (e)"
-                aria-keyshortcuts="e"
-                onClick={() => explainRecall()}
-                className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-              >
-                <span className="text-[10px] leading-none mb-0.5">Explain</span>
-                <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">e</kbd>
               </button>
             )}
             <button
@@ -2037,7 +1951,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             <button
               aria-label="Back to reading (left arrow)"
               aria-keyshortcuts="ArrowLeft"
-              onClick={() => { setRecallMode(false); setRecallDiff(null); setTranslationFeedback(null); setRecallInput(''); }}
+              onClick={exitRecall}
               className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
             >
               <span className="text-[10px] leading-none mb-0.5">Back</span>
@@ -2152,7 +2066,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 [<><kbd className="bg-slate-700 px-1 rounded">l</kbd> — hear the {selectedLang.label} literary translation of the line.</>, false],
                 [<><kbd className="bg-slate-700 px-1 rounded">s</kbd> — toggle speed between 1.0× and 1.5×.</>, false],
                 [<><kbd className="bg-slate-700 px-1 rounded">→</kbd> — enter recall mode to test yourself.</>, true],
-                [<><kbd className="bg-slate-700 px-1 rounded">8</kbd> to hear the original again, <kbd className="bg-slate-700 px-1 rounded">5</kbd> for the model {selectedLang.label} answer.</>, true],
+                [<><kbd className="bg-slate-700 px-1 rounded">8</kbd> to hear the original again.</>, true],
                 [<>Type your {selectedLang.label} translation, then press <kbd className="bg-slate-700 px-1 rounded">Enter</kbd> to check.</>, true],
                 [<><kbd className="bg-slate-700 px-1 rounded">r</kbd> to retry if there are mistakes.</>, true],
               ] as [React.ReactNode, boolean][]).map(([text, inRecall], i) => (
@@ -2248,8 +2162,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   rows: [
                     ['Enter', 'Submit answer for evaluation'],
                     ['8', 'Hear the original text again'],
-                    ['5', `Hear model ${selectedLang.label} answer`],
-                    ['e', 'Explain errors (recall-from-memory mode only)'],
+                    ['Ctrl+Space', 'Toggle direction (It→En / En→It)'],
+                    ['e', 'Explain errors'],
                     ['0', 'Ask a custom question about this line'],
                     ['r  or  Enter', 'Retry after seeing the result'],
                     ['←', 'Exit recall mode, return to reading'],

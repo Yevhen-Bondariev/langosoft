@@ -125,10 +125,10 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
               onMouseMove={handleMouseMove}
               onMouseLeave={() => setHoverIdx(null)}
             >
-              {/* Horizontal grid lines (left scale) */}
-              {yGridLines.map(v => (
+              {/* Horizontal grid lines (left/delta scale) */}
+              {yRightLabels.map(v => (
                 <line key={v}
-                  x1={PAD.left} y1={py(v)} x2={PAD.left + CW} y2={py(v)}
+                  x1={PAD.left} y1={pyR(v)} x2={PAD.left + CW} y2={pyR(v)}
                   stroke="#1e293b" strokeWidth="1"
                 />
               ))}
@@ -145,6 +145,14 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
               {coveragePoints && (
                 <polyline points={coveragePoints} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinejoin="round" />
               )}
+
+              {/* Canticle boundary markers */}
+              <line x1={px(34)} y1={PAD.top} x2={px(34)} y2={PAD.top + CH}
+                stroke="#475569" strokeWidth="1" strokeDasharray="4 4" />
+              <text x={px(34) - 4} y={PAD.top + 8} fontSize="10" fill="#64748b" textAnchor="end">Inf.</text>
+              <line x1={px(67)} y1={PAD.top} x2={px(67)} y2={PAD.top + CH}
+                stroke="#475569" strokeWidth="1" strokeDasharray="4 4" />
+              <text x={px(67) - 4} y={PAD.top + 8} fontSize="10" fill="#64748b" textAnchor="end">Purg.</text>
 
               {/* Current canto marker */}
               {coverages[currentChapterNum] !== undefined && (
@@ -166,21 +174,21 @@ export function VocabChartModal({ bookId, chapterCount, totalVocab, currentChapt
                 </>
               )}
 
-              {/* Left Y axis labels */}
-              {yGridLines.map(v => (
+              {/* Left Y axis labels (orange/delta scale) */}
+              {yRightLabels.map(v => (
                 <text key={v}
-                  x={PAD.left - 6} y={py(v)}
+                  x={PAD.left - 6} y={pyR(v)}
                   textAnchor="end" dominantBaseline="middle"
-                  fontSize="11" fill="#64748b"
+                  fontSize="11" fill="#c2622a"
                 >{v}%</text>
               ))}
 
-              {/* Right Y axis labels */}
-              {yRightLabels.map(v => (
+              {/* Right Y axis labels (blue/cumulative scale) */}
+              {yGridLines.map(v => (
                 <text key={v}
-                  x={PAD.left + CW + 6} y={pyR(v)}
+                  x={PAD.left + CW + 6} y={py(v)}
                   textAnchor="start" dominantBaseline="middle"
-                  fontSize="11" fill="#9a5a3a"
+                  fontSize="11" fill="#4a9fc4"
                 >{v}%</text>
               ))}
 

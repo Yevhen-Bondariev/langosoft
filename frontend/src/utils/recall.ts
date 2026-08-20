@@ -83,12 +83,18 @@ export function sentenceAtWord(paragraphText: string, wordIndex: number): string
   return sentences.at(-1) ?? paragraphText;
 }
 
+// Normalize a word for diff comparison: lowercase + unify apostrophe variants + strip diacritics
+const normForDiff = (w: string) =>
+  w.toLowerCase()
+   .replace(/['‘’ʼʹ`]/g, "'")
+   .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
 export function wordDiff(original: string, typed: string): DiffSegment[] {
   // Whitespace-split so punctuation is preserved as part of each token ("book." ≠ "book")
   const origTokens = original.trim().split(/\s+/).filter(Boolean);
   const typedTokens = typed.trim().split(/\s+/).filter(Boolean);
-  const origNorm = origTokens.map(w => w.toLowerCase());
-  const typedNorm = typedTokens.map(w => w.toLowerCase());
+  const origNorm = origTokens.map(normForDiff);
+  const typedNorm = typedTokens.map(normForDiff);
 
   const m = origNorm.length, n = typedNorm.length;
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));

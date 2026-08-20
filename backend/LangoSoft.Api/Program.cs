@@ -146,6 +146,26 @@ using (var scope = app.Services.CreateScope())
     }
     catch { /* column already exists */ }
 
+    // DeeplText column on Paragraphs (sentence-level DeepL translation, one line per \n)
+    try
+    {
+        var addDeeplCol = isPostgres
+            ? """ALTER TABLE "Paragraphs" ADD COLUMN IF NOT EXISTS "DeeplText" TEXT NULL"""
+            : """ALTER TABLE "Paragraphs" ADD COLUMN "DeeplText" TEXT NULL""";
+        await ctx.Database.ExecuteSqlRawAsync(addDeeplCol);
+    }
+    catch { /* column already exists */ }
+
+    // RefinedText column on Paragraphs (LLM-polished translation, replaces DeepL as 3rd line)
+    try
+    {
+        var addRefinedCol = isPostgres
+            ? """ALTER TABLE "Paragraphs" ADD COLUMN IF NOT EXISTS "RefinedText" TEXT NULL"""
+            : """ALTER TABLE "Paragraphs" ADD COLUMN "RefinedText" TEXT NULL""";
+        await ctx.Database.ExecuteSqlRawAsync(addRefinedCol);
+    }
+    catch { /* column already exists */ }
+
     // Seed default categories once
     var hasDefaults = await ctx.FlashcardCategories.AnyAsync(c => c.IsDefault);
     if (!hasDefaults)

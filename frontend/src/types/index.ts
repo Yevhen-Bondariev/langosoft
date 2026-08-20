@@ -20,6 +20,8 @@ export interface Paragraph {
   index: number;
   text: string;
   longfellowText?: string;
+  deeplText?: string;
+  refinedText?: string;
 }
 
 export interface Category {
