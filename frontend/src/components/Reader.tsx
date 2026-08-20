@@ -11,6 +11,7 @@ import { lineAtWord, lineIndexAtWord, firstWordOfLine, wordDiff, recallScore, ty
 import { useSwipeGesture } from '../hooks/useSwipeGesture';
 import { useLongPress } from '../hooks/useLongPress';
 import { MobileActionBar } from './MobileActionBar';
+import { VocabChartModal } from './VocabChart';
 
 // Normalize a word for gloss cache lookup: lowercase + strip diacritics + strip apostrophes.
 // Groq strips accents (più→piu, è→e) and apostrophes (v'intrai→vintrai, com'→com),
@@ -23,29 +24,41 @@ const normWord = (w: string) =>
 const softNorm = (w: string) =>
   w.toLowerCase().replace(/['\u2018\u2019\u02BC`]/g, '');
 
-// Looks up a raw word in cache + static map.
-// Tries accent-preserving form first so e and e with grave map to different glosses,
-// then falls back to accent-stripped form so piu still matches piu entry.
-// Also handles Italian elision: l'ora -> tries l then ora.
+// Looks up a raw word in both maps.
+// Priority: soft (accent-preserving) \u2192 norm (accent-stripped) \u2192 elision resolution.
+// Elision resolution handles two Italian contraction patterns:
+//   Middle apostrophe (l'erta, d'una): look up each part, join all matches \u2192 "the slope"
+//   Trailing apostrophe (temp', com'): stem has final vowel dropped \u2192 try stem+o/e/a/i \u2192 tempo="time"
 const resolveGloss = (
   rawWord: string,
   cacheMap: Map<string, string> | undefined,
   staticMap: Map<string, string> | null | undefined,
 ): string => {
+  const lookup = (k: string) => cacheMap?.get(k) ?? staticMap?.get(k);
   const soft = softNorm(rawWord);
-  const direct = cacheMap?.get(soft) ?? staticMap?.get(soft);
+  const direct = lookup(soft);
   if (direct) return direct;
   const norm = normWord(rawWord);
   if (norm !== soft) {
-    const stripped = cacheMap?.get(norm) ?? staticMap?.get(norm);
+    const stripped = lookup(norm);
     if (stripped) return stripped;
   }
   if (/['\u2018\u2019\u02BC`]/.test(rawWord)) {
-    for (const part of rawWord.split(/['\u2018\u2019\u02BC`]/).filter(p => p.length > 0)) {
-      const tr = cacheMap?.get(softNorm(part)) ?? staticMap?.get(softNorm(part))
-        ?? cacheMap?.get(normWord(part)) ?? staticMap?.get(normWord(part));
-      if (tr) return tr;
+    const parts = rawWord.split(/['\u2018\u2019\u02BC`]/).filter(p => p.length > 0);
+    const translations: string[] = [];
+    for (const part of parts) {
+      const pn = normWord(part);
+      let tr = lookup(softNorm(part)) ?? lookup(pn);
+      if (!tr) {
+        // Trailing-vowel elision: try restoring the dropped final vowel (temp\u2192tempo, com\u2192come)
+        for (const v of ['o', 'e', 'a', 'i']) {
+          tr = lookup(pn + v);
+          if (tr) break;
+        }
+      }
+      if (tr) translations.push(tr);
     }
+    if (translations.length > 0) return translations.join(' ');
   }
   return '';
 };
@@ -255,6 +268,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
 
   const [showFlowGuide, setShowFlowGuide] = useState(false);
   const [showKeyboardRef, setShowKeyboardRef] = useState(false);
+  const [showVocabChart, setShowVocabChart] = useState(false);
 
   const lineLiteraryCache = useRef<Map<string, string>>(new Map());
   // Per-word translation cache: "${paraIdx}::en" → Map<normWord, translation> (filled by API/DB)
@@ -266,6 +280,11 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [wordFreq, setWordFreq] = useState<Record<string, number>>({});
   const maxFreqRef = useRef(1);
   const [showFreqColors, setShowFreqColors] = useState(false);
+
+  const learnedWordsRef = useRef<Set<string>>(new Set());
+  const [vocabCount, setVocabCount] = useState(0);
+  const vocabSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vocabInitializedChapterRef = useRef(-1);
 
   // Archaism cache: paragraphId → Map<lowercase-word, explanation>
   const [archaisms, setArchaisms] = useState<Map<string, string>>(new Map());
@@ -343,6 +362,43 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       setWordFreq(freq);
     }).catch(() => {});
   }, [book.id]);
+
+  // When book changes, reset the initialization flag and load stored words from localStorage
+  useEffect(() => {
+    if (book.language === 'en') return;
+    vocabInitializedChapterRef.current = -1;
+    const stored = localStorage.getItem(`vocab_${book.id}`);
+    try {
+      learnedWordsRef.current = stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+    } catch {
+      learnedWordsRef.current = new Set();
+    }
+    setVocabCount(learnedWordsRef.current.size);
+  }, [book.id, book.language]);
+
+  // Once paragraphs load for a chapter, scan all completed stanzas up to the current position.
+  // Runs once per chapter (chapterNum guards re-init). Handles page reload + chapter switch.
+  useEffect(() => {
+    if (book.language === 'en' || allTokens.length === 0) return;
+    if (vocabInitializedChapterRef.current === chapterNum) return;
+    vocabInitializedChapterRef.current = chapterNum;
+    for (let i = 0; i <= currentParagraphIndex; i++) {
+      const wTokens = getWordTokens(allTokens[i] ?? []);
+      const limit = i < currentParagraphIndex ? wTokens.length : currentWordIndex + 1;
+      for (let j = 0; j < limit; j++) {
+        const raw = wTokens[j]?.rawWord || wTokens[j]?.text || '';
+        const key = normWord(raw);
+        if (key) learnedWordsRef.current.add(key);
+      }
+    }
+    setVocabCount(learnedWordsRef.current.size);
+    if (vocabSaveTimerRef.current) clearTimeout(vocabSaveTimerRef.current);
+    vocabSaveTimerRef.current = setTimeout(() => {
+      localStorage.setItem(`vocab_${book.id}`, JSON.stringify([...learnedWordsRef.current]));
+    }, 2000);
+  // currentParagraphIndex/currentWordIndex captured at chapter load moment; chapterNum triggers re-run on chapter switch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTokens, chapterNum, book.language, book.id]);
 
   // Load static flat word dictionary for non-English books (generated once, never changes).
   // File: public/gloss-{lang}.json — flat { normalizedWord: englishTranslation }
@@ -494,6 +550,23 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const word = token?.rawWord || token?.text || '';
     setCurrentWordGloss(word ? resolveGloss(word, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current) : '');
   }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, glossCacheVersion, staticGlossLoaded]);
+
+  // Track vocabulary: add the current word's normWord key to the learned set on every word navigation
+  useEffect(() => {
+    if (book.language === 'en') return;
+    const wTokens = getWordTokens(allTokens[currentParagraphIndex] ?? []);
+    const token = wTokens[currentWordIndex];
+    const raw = token?.rawWord || token?.text || '';
+    if (!raw) return;
+    const key = normWord(raw);
+    if (!key || learnedWordsRef.current.has(key)) return;
+    learnedWordsRef.current.add(key);
+    setVocabCount(learnedWordsRef.current.size);
+    if (vocabSaveTimerRef.current) clearTimeout(vocabSaveTimerRef.current);
+    vocabSaveTimerRef.current = setTimeout(() => {
+      localStorage.setItem(`vocab_${book.id}`, JSON.stringify([...learnedWordsRef.current]));
+    }, 2000);
+  }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, book.id]);
 
   // Fetch archaism annotations for the current paragraph (non-English books only, cached per paragraphId)
   useEffect(() => {
@@ -957,14 +1030,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         const letters = wordTokens[currentWordIndex]?.rawWord.split('') ?? [];
         const next = Math.max(0, currentLetterIndex - 1);
         setCurrentLetterIndex(next);
-        if (letters[next]) speak(letters[next]);
+        // Strip diacritics so TTS says "u" not "u accent grave" for ù, è, à etc.
+        if (letters[next]) speak(letters[next].normalize('NFD').replace(/[̀-ͯ]/g, '') || letters[next]);
         return;
       }
       // ── 2 / Numpad2 ── current letter
       if (key === '2' || code === 'Numpad2') {
         e.preventDefault();
         const letters = wordTokens[currentWordIndex]?.rawWord.split('') ?? [];
-        if (letters[currentLetterIndex]) speak(letters[currentLetterIndex]);
+        const ch = letters[currentLetterIndex];
+        if (ch) speak(ch.normalize('NFD').replace(/[̀-ͯ]/g, '') || ch);
         return;
       }
       // ── 3 / Numpad3 ── next letter
@@ -973,7 +1048,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         const letters = wordTokens[currentWordIndex]?.rawWord.split('') ?? [];
         const next = Math.min(letters.length - 1, currentLetterIndex + 1);
         setCurrentLetterIndex(next);
-        if (letters[next]) speak(letters[next]);
+        if (letters[next]) speak(letters[next].normalize('NFD').replace(/[̀-ͯ]/g, '') || letters[next]);
         return;
       }
       // ── 4 / Numpad4 ── previous word
@@ -1518,7 +1593,19 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           const bookPct = book.chapterCount > 0
             ? Math.round((chapterNum + chapterFraction) / book.chapterCount * 100)
             : 0;
-          return <span className="text-slate-600">Chapter {chapterPct}% · Book {bookPct}%</span>;
+          const totalVocab = Object.keys(wordFreq).length;
+          const vocabPct = totalVocab > 0 ? (vocabCount / totalVocab * 100) : null;
+          return (
+            <span className="text-slate-600">
+              Chapter {chapterPct}% · Book {bookPct}%
+              {book.language !== 'en' && vocabPct !== null && (
+                <> · <button
+                  onClick={() => setShowVocabChart(true)}
+                  className="underline decoration-dotted hover:text-slate-400 cursor-pointer"
+                >Vocabulary {vocabPct < 10 ? vocabPct.toFixed(2) : vocabPct.toFixed(1)}%</button></>
+              )}
+            </span>
+          );
         })()}
         {book.language !== 'en' && !statusMsg && currentWordGloss && (
           <span className="text-sky-400 text-sm ml-auto italic">{currentWordGloss}</span>
@@ -2275,6 +2362,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             </div>
           </div>
         </div>
+      )}
+
+      {showVocabChart && (
+        <VocabChartModal
+          bookId={book.id}
+          chapterCount={book.chapterCount}
+          totalVocab={Object.keys(wordFreq).length}
+          currentChapterNum={chapterNum}
+          onClose={() => setShowVocabChart(false)}
+        />
       )}
 
     </div>

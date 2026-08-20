@@ -637,7 +637,6 @@
     "tua":  "yours",
     "o":  "or",
     "mbianca":  "mbianca",
-    "temp":  "temp",
     "sensibilmente":  "significantly",
     "entro":  "by",
     "ingombra":  "cluttered",
@@ -839,5 +838,6 @@
     "trattar":  "speak",
     "campar":  "to escape",
     "anchise":  "Anchises",
-    "vòlto":  "turned"
+    "vòlto":  "turned",
+    "temp":  "time"
 }
