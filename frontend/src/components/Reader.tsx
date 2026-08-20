@@ -443,6 +443,14 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     currentParaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [currentParagraphIndex]);
 
+  // Clear gloss cache when the paragraph list changes (chapter/book navigation).
+  // Cache keys are 0-based indices within the chapter, so without this Canto I entries
+  // at "0::en", "1::en"… would be served for Canto II indices and the fetch skipped.
+  useEffect(() => {
+    glossWordCache.current.clear();
+    glossFetchingRef.current.clear();
+  }, [paragraphs]);
+
   // Pre-fetch English word-by-word gloss for current paragraph + next two (non-English books only)
   useEffect(() => {
     if (book.language === 'en') { setGlossLoading(false); return; }
@@ -770,7 +778,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     } else {
       playFailure();
     }
-  }, [recallSentence, recallGlossLine, recallParaTranslation, recallInput, recallToTranslation]);
+  }, [recallGlossLine, recallParaTranslation, recallInput, recallToTranslation, recallSentence]);
 
   const retryRecall = useCallback(() => {
     setRecallDiff(null);
@@ -1759,34 +1767,15 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   {recallHintLoading && <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '0.5rem' }}>Loading hints…</p>}
                 </>
               ) : (
-                /* En→It mode: show translation hints; fall back to original if unavailable */
+                /* En→It mode: show word-by-word gloss (line 2) as prompt; user types Italian */
                 <>
-                  {recallHintLoading ? (
-                    <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Translating…</p>
-                  ) : recallHintLiterary ? (
-                    <>
-                      <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-                        {selectedLang.label} — press 8 to hear
-                      </p>
-                      <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literary</p>
-                      <p style={{ color: '#e2e8f0', fontSize: '1.05rem', lineHeight: 1.7, marginBottom: '0.75rem' }} aria-live="polite">{recallHintLiterary}</p>
-                      {recallHintLiteral && (
-                        <div style={{ borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
-                          <p style={{ color: '#64748b', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.25rem' }}>Literal</p>
-                          <p style={{ color: '#cbd5e1', fontSize: '1.0rem', lineHeight: 1.65, fontStyle: 'italic' }}>{recallHintLiteral}</p>
-                        </div>
-                      )}
-                    </>
-                  ) : recallParaTranslation ? (
-                    /* Stored stanza translation as fallback */
-                    <>
-                      <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                        Translation — press 8 to hear
-                      </p>
-                      <p style={{ color: '#e2e8f0', fontSize: '1.0rem', lineHeight: 1.7 }}>{recallParaTranslation}</p>
-                    </>
+                  <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+                    Word-by-word gloss — type the Italian
+                  </p>
+                  {recallGlossLine ? (
+                    <p style={{ color: '#7dd3fc', fontSize: '1.1rem', lineHeight: 1.7 }}>{recallGlossLine}</p>
                   ) : (
-                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Translation unavailable</p>
+                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Gloss unavailable</p>
                   )}
                 </>
               )}
@@ -1828,7 +1817,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
               /* Typing area */
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '0.75rem' }}>
                 <label style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }} htmlFor="recall-input">
-                  {recallToTranslation ? `Type the ${selectedLang.label} translation` : 'Type the original from memory'}
+                  {recallToTranslation ? 'Type the word-by-word gloss' : `Type the ${bookLangName}`}
                 </label>
                 <textarea
                   id="recall-input"
@@ -1837,19 +1826,19 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onChange={e => setRecallInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitRecall(); }
-                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); announceToNvda(recallSentence); } else { const ah = recallHintLiterary || recallHintLiteral; const t = ah || recallParaTranslation; if (t) { speak(t, { lang: ah ? selectedLang.code : 'en' }); announceToNvda(t); } } }
+                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); announceToNvda(recallSentence); } else { if (recallGlossLine) { speak(recallGlossLine, { lang: 'en' }); announceToNvda(recallGlossLine); } } }
                     if (e.key === '2') { e.preventDefault(); if (customAnswer) speak(customAnswer, { lang: 'en' }); }
                     if (e.key === '0') { e.preventDefault(); setCustomQuestionOpen(open => { const next = !open; if (next) setTimeout(() => customQuestionRef.current?.focus(), 50); else setTimeout(() => recallTextareaRef.current?.focus(), 50); return next; }); }
                   }}
                   rows={5}
-                  placeholder={recallToTranslation ? `Type the ${selectedLang.label} translation…` : 'Type from memory…'}
+                  placeholder={recallToTranslation ? 'Type the word-by-word gloss…' : `Type the ${bookLangName}…`}
                   style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '0.5rem', padding: '0.75rem', color: '#f1f5f9', fontSize: '1.1rem', lineHeight: 1.65, resize: 'none', outline: 'none', flex: 1, minWidth: 0 }}
-                  aria-label={recallToTranslation ? `Type the ${selectedLang.label} translation. Press Enter to check, 8 to hear original.` : 'Type the original from memory. Press Enter to check, 8 to hear the hint.'}
+                  aria-label={recallToTranslation ? 'Type the word-by-word gloss. Press Enter to check, 8 to hear hint.' : `Type the ${bookLangName}. Press Enter to check, 8 to hear gloss.`}
                 />
                 <p style={{ color: '#475569', fontSize: '0.75rem' }}>
                   {recallToTranslation
                     ? `Enter to check · 8 ${bookLangName} · ← back`
-                    : `Enter to check · 8 ${selectedLang.label} · ← back`}
+                    : `Enter to check · 8 gloss · ← back`}
                 </p>
               </div>
             ) : (
