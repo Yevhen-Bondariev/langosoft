@@ -13,7 +13,7 @@
     "ben":  "well",
     "tolle":  "tolle",
     "antica":  "ancient",
-    "partia":  "partia",
+    "partia":  "left",
     "notturno":  "nocturne",
     "disvuol":  "disvuol",
     "l":  "the",
@@ -37,7 +37,7 @@
     "ammanto":  "cloak",
     "citta":  "city",
     "sara":  "will be",
-    "si":  "himself",
+    "si":  "self",
     "far":  "to do",
     "dimmi":  "Tell me",
     "andare":  "to go",
@@ -838,5 +838,6 @@
     "saggio":  "sage",
     "trattar":  "speak",
     "campar":  "to escape",
-    "anchise":  "Anchises"
+    "anchise":  "Anchises",
+    "vòlto":  "turned"
 }
