@@ -239,73 +239,6 @@ export default function App() {
         ))}
       </nav>
 
-      {/* Settings */}
-      <div className="px-3 py-2.5 border-b border-slate-800 space-y-3">
-        {/* Phoneme hints toggle */}
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">Phoneme hints</span>
-          <button
-            onClick={() => setShowPhonemeHints(v => !v)}
-            role="switch"
-            aria-checked={showPhonemeHints}
-            className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${showPhonemeHints ? 'bg-amber-500' : 'bg-slate-700'}`}
-            onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') setShowPhonemeHints(v => !v); }}
-          >
-            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${showPhonemeHints ? 'left-[18px]' : 'left-0.5'}`} />
-          </button>
-        </div>
-
-        {/* Translation language picker */}
-        <div>
-          <label className="text-[11px] text-slate-400 block mb-1">Translation language</label>
-          <select
-            value={selectedLang.code}
-            onChange={e => setLanguage(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-            aria-label="Select translation language"
-          >
-            {languages.map(l => (
-              <option key={l.code} value={l.code}>{l.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Voice picker */}
-        {voices.length > 0 && (
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Voice</label>
-            <select
-              value={selectedVoiceName}
-              onChange={e => setVoice(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-              aria-label="Select TTS voice"
-            >
-              {voices.map(v => (
-                <option key={v.name} value={v.name}>{v.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Narration speed */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Speed</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <button
-              onClick={() => changeRate(-0.1)}
-              style={{ width: 32, height: 32, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
-              aria-label="Slow down narration"
-            >−</button>
-            <span style={{ fontSize: '13px', color: '#e2e8f0', width: 36, textAlign: 'center' }}>{ttsRate.toFixed(1)}×</span>
-            <button
-              onClick={() => changeRate(0.1)}
-              style={{ width: 32, height: 32, background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
-              aria-label="Speed up narration"
-            >+</button>
-          </div>
-        </div>
-      </div>
-
       {/* Chapter list (reader only) */}
       {view === 'reader' && (
         <div className="flex-1 overflow-y-auto">
@@ -398,6 +331,12 @@ export default function App() {
             onRateChange={changeRate}
             isMobile={isMobile}
             onOpenSidebar={() => setSidebarOpen(true)}
+            voices={voices}
+            voiceName={selectedVoiceName}
+            onVoiceChange={setVoice}
+            languages={languages}
+            onLangChange={setLanguage}
+            onPhonemeToggle={() => setShowPhonemeHints(v => !v)}
           />
         )}
         {view === 'flashcards' && (

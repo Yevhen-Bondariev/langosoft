@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book, Category, Chapter, Paragraph } from '../types';
 import { api } from '../services/api';
 import CategoryPicker from './CategoryPicker';
@@ -184,6 +184,225 @@ function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain: 
   );
 }
 
+interface SettingsModalProps {
+  voices: SpeechSynthesisVoice[];
+  voiceName: string;
+  onVoiceChange?: (name: string) => void;
+  languages: LanguageOption[];
+  selectedLangCode: string;
+  selectedLangLabel: string;
+  onLangChange?: (code: string) => void;
+  ttsRate: number;
+  onRateChange?: (delta: number) => void;
+  showFreqColors: boolean;
+  onFreqColorsToggle: () => void;
+  vocabTotal: number;
+  vocabCount: number;
+  onVocabReset: () => void;
+  showLine1: boolean; onLine1Change: (v: boolean) => void;
+  showLine2: boolean; onLine2Change: (v: boolean) => void;
+  showLine3: boolean; onLine3Change: (v: boolean) => void;
+  showLine4: boolean; onLine4Change: (v: boolean) => void;
+  onClose: () => void;
+}
+
+const SettingsModal = memo(function SettingsModal({
+  voices, voiceName, onVoiceChange,
+  languages, selectedLangCode, selectedLangLabel, onLangChange,
+  ttsRate, onRateChange,
+  showFreqColors, onFreqColorsToggle,
+  vocabTotal, vocabCount, onVocabReset,
+  showLine1, onLine1Change, showLine2, onLine2Change,
+  showLine3, onLine3Change, showLine4, onLine4Change,
+  onClose,
+}: SettingsModalProps) {
+  const [tab, setTab] = useState('frequency');
+
+  const TABS = [
+    { id: 'frequency', label: 'Frequency' },
+    { id: 'phonemes',  label: 'Phonemes', disabled: true },
+    { id: 'languages', label: 'Languages' },
+    { id: 'narration', label: 'Narration' },
+    { id: 'display',   label: 'Display' },
+    { id: 'howto',     label: 'How to use' },
+  ];
+
+  const tabLabels: Record<string, string> = { frequency: 'Frequency', phonemes: 'Phonemes', languages: 'Languages', narration: 'Narration', display: 'Display', howto: 'How to use' };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/75 flex items-center justify-center z-50"
+      role="dialog" aria-modal="true" aria-label="Settings"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex overflow-hidden"
+        style={{ maxHeight: '85vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Left menu */}
+        <div className="w-40 shrink-0 border-r border-slate-700 flex flex-col py-2">
+          {TABS.map(({ id, label, disabled }) => (
+            <button
+              key={id}
+              onClick={() => !disabled && setTab(id)}
+              disabled={disabled}
+              className={`px-4 py-2.5 text-left text-sm transition-colors ${
+                disabled
+                  ? 'text-slate-600 cursor-not-allowed'
+                  : tab === id
+                    ? 'bg-slate-700 text-amber-400 font-semibold'
+                    : 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200'
+              }`}
+            >
+              {label}
+              {disabled && <span className="ml-1 text-[10px] text-slate-600">soon</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* Right content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-bold text-amber-400">{tabLabels[tab] ?? tab}</h2>
+            <button
+              autoFocus
+              onClick={onClose}
+              aria-label="Close settings"
+              className="text-slate-500 hover:text-slate-200 text-lg leading-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
+            >✕</button>
+          </div>
+
+          {/* Frequency */}
+          {tab === 'frequency' && (
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-300">Word frequency colors</span>
+                <button
+                  onClick={onFreqColorsToggle}
+                  role="switch"
+                  aria-checked={showFreqColors}
+                  className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${showFreqColors ? 'bg-amber-500' : 'bg-slate-700'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${showFreqColors ? 'left-[18px]' : 'left-0.5'}`} />
+                </button>
+              </div>
+              <div className="pt-4 border-t border-slate-700">
+                <p className="text-sm text-slate-300 mb-1">Vocabulary progress</p>
+                <p className="text-xs text-slate-500 mb-3">
+                  {vocabCount} / {vocabTotal} unique words seen ({vocabTotal > 0 ? (vocabCount / vocabTotal * 100).toFixed(1) : '0.0'}%)
+                </p>
+                <button
+                  onClick={onVocabReset}
+                  className="px-3 py-1.5 rounded bg-red-900/40 border border-red-800/50 text-red-400 text-xs hover:bg-red-900/60 transition-colors"
+                >
+                  Reset vocabulary progress
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Languages */}
+          {tab === 'languages' && (
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500 mb-3">Choose the language for translations and recall mode.</p>
+              {languages.map(l => (
+                <button
+                  key={l.code}
+                  onClick={() => onLangChange?.(l.code)}
+                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                    selectedLangCode === l.code
+                      ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30'
+                      : 'text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-transparent'
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Narration */}
+          {tab === 'narration' && (
+            <div className="space-y-5">
+              {voices.length > 0 && (
+                <div>
+                  <label className="text-sm text-slate-300 block mb-2">Voice</label>
+                  <select
+                    value={voiceName}
+                    onChange={e => onVoiceChange?.(e.target.value)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                  >
+                    {voices.map(v => (
+                      <option key={v.name} value={v.name}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <p className="text-sm text-slate-300 mb-3">Narration speed</p>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => onRateChange?.(-0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Slow down">−</button>
+                  <span className="flex-1 text-center text-lg font-semibold text-slate-200">{ttsRate.toFixed(1)}×</span>
+                  <button onClick={() => onRateChange?.(0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Speed up">+</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Display */}
+          {tab === 'display' && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 mb-4">Toggle which lines appear in each verse stanza.</p>
+              {[
+                { n: 1, label: 'Italian original',      val: showLine1, onChange: onLine1Change },
+                { n: 2, label: 'Word-by-word gloss',    val: showLine2, onChange: onLine2Change },
+                { n: 3, label: 'Longfellow translation', val: showLine3, onChange: onLine3Change },
+                { n: 4, label: 'Ukrainian translation',  val: showLine4, onChange: onLine4Change },
+              ].map(({ n, label, val, onChange }) => (
+                <div key={n} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">{label}</span>
+                  <button
+                    onClick={() => onChange(!val)}
+                    role="switch"
+                    aria-checked={val}
+                    className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-amber-500 ${val ? 'bg-amber-500' : 'bg-slate-700'}`}
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${val ? 'left-[18px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* How to use */}
+          {tab === 'howto' && (
+            <ol className="space-y-2.5 text-sm text-slate-300">
+              {([
+                [<><kbd className="bg-slate-700 px-1 rounded">5</kbd> — hear the current word and its English translation.</>, false],
+                [<><kbd className="bg-slate-700 px-1 rounded">6</kbd> — step through each word. A soft tone marks the end of the line.</>, false],
+                [<><kbd className="bg-slate-700 px-1 rounded">8</kbd> — hear the full line read aloud, as many times as needed.</>, false],
+                [<><kbd className="bg-slate-700 px-1 rounded">l</kbd> — hear the {selectedLangLabel} literary translation of the line.</>, false],
+                [<><kbd className="bg-slate-700 px-1 rounded">s</kbd> — toggle speed between 1.0× and 1.5×.</>, false],
+                [<><kbd className="bg-slate-700 px-1 rounded">→</kbd> — enter recall mode to test yourself.</>, true],
+                [<><kbd className="bg-slate-700 px-1 rounded">8</kbd> to hear the original again.</>, true],
+                [<>Type your {selectedLangLabel} translation, then press <kbd className="bg-slate-700 px-1 rounded">Enter</kbd> to check.</>, true],
+                [<><kbd className="bg-slate-700 px-1 rounded">r</kbd> to retry if there are mistakes.</>, true],
+              ] as [React.ReactNode, boolean][]).map(([text, inRecall], i) => (
+                <li key={i} className="flex gap-2.5 items-baseline">
+                  <span className="text-amber-500 font-bold text-xs shrink-0 w-4 text-right">{i + 1}.</span>
+                  <span className={inRecall ? 'text-slate-400' : ''}>{text}</span>
+                </li>
+              ))}
+              <p className="mt-4 text-xs text-slate-600">Steps 6–9 take place inside recall mode. Press <kbd className="bg-slate-700 px-1 rounded text-slate-500">Esc</kbd> to close.</p>
+            </ol>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
 interface Props {
   book: Book;
   chapters: Chapter[];
@@ -200,6 +419,12 @@ interface Props {
   onRateChange?: (delta: number) => void;
   isMobile?: boolean;
   onOpenSidebar?: () => void;
+  voices?: SpeechSynthesisVoice[];
+  voiceName?: string;
+  onVoiceChange?: (name: string) => void;
+  languages?: LanguageOption[];
+  onLangChange?: (code: string) => void;
+  onPhonemeToggle?: () => void;
 }
 
 interface AddFlashcardState {
@@ -210,7 +435,7 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -256,9 +481,13 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [customAnswer, setCustomAnswer] = useState<string | null>(null);
   const [customAnswerLoading, setCustomAnswerLoading] = useState(false);
 
-  const [showFlowGuide, setShowFlowGuide] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showKeyboardRef, setShowKeyboardRef] = useState(false);
   const [showVocabChart, setShowVocabChart] = useState(false);
+  const [showLine1, setShowLine1] = useState(() => localStorage.getItem('show-line1') !== 'false');
+  const [showLine2, setShowLine2] = useState(() => localStorage.getItem('show-line2') !== 'false');
+  const [showLine3, setShowLine3] = useState(() => localStorage.getItem('show-line3') !== 'false');
+  const [showLine4, setShowLine4] = useState(() => localStorage.getItem('show-line4') !== 'false');
 
   const lineLiteraryCache = useRef<Map<string, string>>(new Map());
   // Per-word translation cache: "${paraIdx}::en" → Map<normWord, translation> (filled by API/DB)
@@ -275,6 +504,20 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [vocabCount, setVocabCount] = useState(0);
   const vocabSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vocabInitializedChapterRef = useRef(-1);
+
+  // Stable callbacks for SettingsModal (avoid re-renders of the memo'd component)
+  const handleFreqColorsToggle = useCallback(() => setShowFreqColors(v => !v), []);
+  const handleVocabReset = useCallback(() => {
+    learnedWordsRef.current.clear();
+    setVocabCount(0);
+    vocabInitializedChapterRef.current = -1;
+    localStorage.removeItem(`vocab_${book.id}`);
+  }, [book.id]);
+  const handleLine1Change = useCallback((v: boolean) => { setShowLine1(v); localStorage.setItem('show-line1', String(v)); }, []);
+  const handleLine2Change = useCallback((v: boolean) => { setShowLine2(v); localStorage.setItem('show-line2', String(v)); }, []);
+  const handleLine3Change = useCallback((v: boolean) => { setShowLine3(v); localStorage.setItem('show-line3', String(v)); }, []);
+  const handleLine4Change = useCallback((v: boolean) => { setShowLine4(v); localStorage.setItem('show-line4', String(v)); }, []);
+  const handleCloseSettings = useCallback(() => { setShowSettings(false); currentWordRef.current?.focus(); }, []);
 
   // Archaism cache: paragraphId → Map<lowercase-word, explanation>
   const [archaisms, setArchaisms] = useState<Map<string, string>>(new Map());
@@ -914,9 +1157,9 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         return;
       }
 
-      // Flow guide popup — Escape closes it, Tab passes through, everything else blocked
-      if (showFlowGuide) {
-        if (e.key === 'Escape') { setShowFlowGuide(false); e.preventDefault(); setTimeout(() => currentWordRef.current?.focus(), 0); return; }
+      // Settings panel — Escape closes it, Tab passes through, everything else blocked
+      if (showSettings) {
+        if (e.key === 'Escape') { setShowSettings(false); e.preventDefault(); setTimeout(() => currentWordRef.current?.focus(), 0); return; }
         if (e.key !== 'Tab') e.preventDefault();
         return;
       }
@@ -1281,7 +1524,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     retryRecall, explainRecall, enterRecall, exitRecall, announceToNvda,
     customQuestionOpen, customAnswer, submitCustomQuestion,
     saveProgress, book.language, ttsRate, onRateToggle, onRateChange, showStatus,
-    showFlowGuide, showKeyboardRef, playLineBell, currentArchaism, playArchaismTone,
+    showSettings, showKeyboardRef, playLineBell, currentArchaism, playArchaismTone,
   ]);
 
   // Swipe gestures for mobile reading pane
@@ -1422,29 +1665,31 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             return (
               <div key={li} className={li > 0 ? 'mt-3' : ''}>
                 {/* Each word paired with its gloss in one column */}
-                <div className="flex flex-wrap gap-x-3 gap-y-0">
-                  {wordItems.map(({ token, origTi }) => {
-                    const eng = hasGloss ? lookupEng(token.rawWord) : '';
-                    return (
-                      <div key={origTi} className="inline-flex flex-col items-start">
-                        {renderWordSpan(token, origTi)}
-                        {hasGloss && (
-                          <span className="text-sky-400 font-mono text-sm leading-tight">
-                            {eng || '·'}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                {(showLine1 || (showLine2 && hasGloss)) && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-0">
+                    {wordItems.map(({ token, origTi }) => {
+                      const eng = hasGloss ? lookupEng(token.rawWord) : '';
+                      return (
+                        <div key={origTi} className="inline-flex flex-col items-start">
+                          {showLine1 && renderWordSpan(token, origTi)}
+                          {showLine2 && hasGloss && (
+                            <span className="text-sky-400 font-mono text-sm leading-tight">
+                              {eng || '·'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 {/* Longfellow — 3rd line */}
-                {lfLine && (
+                {showLine3 && lfLine && (
                   <div className="font-mono text-base leading-snug text-slate-400 italic">
                     {lfLine}
                   </div>
                 )}
                 {/* Ukrainian — 4th line */}
-                {ukLine && (
+                {showLine4 && ukLine && (
                   <div className="font-mono text-base leading-snug text-amber-300 italic">
                     {ukLine}
                   </div>
@@ -1473,7 +1718,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           if (!hasLiteral && !para.longfellowText && !para.ukrainianText) return null;
           return (
             <div className="mt-2 space-y-1">
-              {hasLiteral && (
+              {showLine2 && hasLiteral && (
                 <div className="flex flex-wrap gap-x-2 gap-y-0">
                   {paraTokens.map((token, ti) => {
                     if (token.type !== 'word') return null;
@@ -1488,12 +1733,12 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   })}
                 </div>
               )}
-              {para.longfellowText && (
+              {showLine3 && para.longfellowText && (
                 <p className="text-slate-500 italic text-sm leading-snug">
                   {para.longfellowText}
                 </p>
               )}
-              {para.ukrainianText && (
+              {showLine4 && para.ukrainianText && (
                 <p className="text-amber-300 italic text-sm leading-snug">
                   {para.ukrainianText}
                 </p>
@@ -1546,20 +1791,15 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           </span>
         </div>
         <button
-          onClick={() => setShowFlowGuide(true)}
-          aria-label="Show recommended reading flow"
-          aria-keyshortcuts="?"
-          title="How to read"
-          className="text-slate-500 hover:text-amber-400 text-base leading-none transition-colors"
-        >?</button>
-        {Object.keys(wordFreq).length > 0 && (
-          <button
-            onClick={() => setShowFreqColors(v => !v)}
-            title={showFreqColors ? 'Disable word frequency colors' : 'Enable word frequency colors'}
-            aria-pressed={showFreqColors}
-            className={`text-xs px-2 py-0.5 rounded border transition-colors ${showFreqColors ? 'border-sky-600 text-sky-400 bg-sky-900/30' : 'border-slate-600 text-slate-500'}`}
-          >freq</button>
-        )}
+          onClick={() => setShowSettings(true)}
+          aria-label="Settings"
+          title="Settings"
+          className="text-slate-500 hover:text-amber-400 leading-none transition-colors flex items-center"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" width="17" height="17" aria-hidden="true">
+            <path fillRule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+          </svg>
+        </button>
         <button
           onClick={() => goToChapter(chapterNum + 1)}
           disabled={chapterNum >= totalChapters - 1}
@@ -2044,42 +2284,29 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
       </div>
       )}
 
-      {/* Recommended flow guide */}
-      {showFlowGuide && (
-        <div
-          className="fixed inset-0 bg-black/75 flex items-center justify-center z-50"
-          role="dialog" aria-modal="true" aria-label="Recommended reading flow"
-          onClick={() => setShowFlowGuide(false)}
-        >
-          <div
-            className="bg-slate-800 border border-slate-600 rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-amber-400">Recommended reading flow</h2>
-              <button autoFocus onClick={() => { setShowFlowGuide(false); currentWordRef.current?.focus(); }} aria-label="Close flow guide" className="text-slate-500 hover:text-slate-200 text-lg leading-none">✕</button>
-            </div>
-            <ol className="space-y-2.5 text-sm text-slate-300">
-              {([
-                [<><kbd className="bg-slate-700 px-1 rounded">5</kbd> — hear the current word and its English translation.</>, false],
-                [<><kbd className="bg-slate-700 px-1 rounded">6</kbd> — step through each word. A soft tone marks the end of the line.</>, false],
-                [<><kbd className="bg-slate-700 px-1 rounded">8</kbd> — hear the full line read aloud, as many times as needed.</>, false],
-                [<><kbd className="bg-slate-700 px-1 rounded">l</kbd> — hear the {selectedLang.label} literary translation of the line.</>, false],
-                [<><kbd className="bg-slate-700 px-1 rounded">s</kbd> — toggle speed between 1.0× and 1.5×.</>, false],
-                [<><kbd className="bg-slate-700 px-1 rounded">→</kbd> — enter recall mode to test yourself.</>, true],
-                [<><kbd className="bg-slate-700 px-1 rounded">8</kbd> to hear the original again.</>, true],
-                [<>Type your {selectedLang.label} translation, then press <kbd className="bg-slate-700 px-1 rounded">Enter</kbd> to check.</>, true],
-                [<><kbd className="bg-slate-700 px-1 rounded">r</kbd> to retry if there are mistakes.</>, true],
-              ] as [React.ReactNode, boolean][]).map(([text, inRecall], i) => (
-                <li key={i} className="flex gap-2.5 items-baseline">
-                  <span className="text-amber-500 font-bold text-xs shrink-0 w-4 text-right">{i + 1}.</span>
-                  <span className={inRecall ? 'text-slate-400' : ''}>{text}</span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-4 text-xs text-slate-600">Steps 6–9 take place inside recall mode. Press <kbd className="bg-slate-700 px-1 rounded text-slate-500">Esc</kbd> to close.</p>
-          </div>
-        </div>
+      {/* Settings panel */}
+      {showSettings && (
+        <SettingsModal
+          voices={voices}
+          voiceName={voiceName}
+          onVoiceChange={onVoiceChange}
+          languages={languages}
+          selectedLangCode={selectedLang.code}
+          selectedLangLabel={selectedLang.label}
+          onLangChange={onLangChange}
+          ttsRate={ttsRate}
+          onRateChange={onRateChange}
+          showFreqColors={showFreqColors}
+          onFreqColorsToggle={handleFreqColorsToggle}
+          vocabTotal={Object.keys(wordFreq).length}
+          vocabCount={vocabCount}
+          onVocabReset={handleVocabReset}
+          showLine1={showLine1} onLine1Change={handleLine1Change}
+          showLine2={showLine2} onLine2Change={handleLine2Change}
+          showLine3={showLine3} onLine3Change={handleLine3Change}
+          showLine4={showLine4} onLine4Change={handleLine4Change}
+          onClose={handleCloseSettings}
+        />
       )}
 
       {/* Keyboard reference dialog */}
@@ -2173,7 +2400,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 {
                   title: 'Panels & Help',
                   rows: [
-                    ['?', 'Recommended reading flow guide'],
+                    ['⚙', 'Settings panel (toolbar button)'],
                     ['h', 'This keyboard reference (works from anywhere)'],
                   ] as [string, string][],
                 },

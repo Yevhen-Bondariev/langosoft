@@ -7,7 +7,6 @@ export interface LanguageOption {
 }
 
 export const LANGUAGES: LanguageOption[] = [
-  { code: 'uk', label: 'Українська', name: 'Ukrainian' },
   { code: 'en', label: 'English', name: 'English' },
   { code: 'es', label: 'Español', name: 'Spanish' },
   { code: 'de', label: 'Deutsch', name: 'German' },
@@ -15,14 +14,15 @@ export const LANGUAGES: LanguageOption[] = [
   { code: 'pl', label: 'Polski', name: 'Polish' },
   { code: 'pt', label: 'Português', name: 'Portuguese' },
   { code: 'it', label: 'Italiano', name: 'Italian' },
+  { code: 'nl', label: 'Nederlands', name: 'Dutch' },
+  { code: 'tr', label: 'Türkçe', name: 'Turkish' },
+  { code: 'uk', label: 'Українська', name: 'Ukrainian' },
   { code: 'ru', label: 'Русский', name: 'Russian' },
   { code: 'ar', label: 'العربية', name: 'Arabic' },
+  { code: 'he', label: 'עברית', name: 'Hebrew' },
   { code: 'zh', label: '中文', name: 'Chinese' },
   { code: 'ja', label: '日本語', name: 'Japanese' },
   { code: 'ko', label: '한국어', name: 'Korean' },
-  { code: 'tr', label: 'Türkçe', name: 'Turkish' },
-  { code: 'nl', label: 'Nederlands', name: 'Dutch' },
-  { code: 'he', label: 'עברית', name: 'Hebrew' },
 ];
 
 const STORAGE_KEY = 'langosoft-language';
