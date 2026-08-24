@@ -158,6 +158,20 @@ Nouns are the key. They give the story a subject, and a subject naturally demand
 
 ---
 
+## Rule 16: Prefer the funnier scene
+
+When two mnemonics have equal phonetic quality, always pick the more absurd or funny one. Bizarre and embarrassing scenes stick in memory far better than neutral ones. Absurdity is a feature, not a flaw.
+
+| ❌ Bland | ✓ Funny/absurd |
+|---------|---------------|
+| A DEER stands in a field | I face a DEER and WILL SAY just one word, holding out a DIROL |
+| A COMPUTER crashes | A COMPUTER crashes on a PUNT trip and GUILT stabs him |
+| MESSI plays football | MESSI sits SAD on the bench after losing the World Cup final |
+
+If writing the scene makes you smile, it will work. If it feels forgettable when you write it, it will be forgotten.
+
+---
+
 ## Rule 14: Choose universal nouns over niche proper nouns
 
 A famous person is only useful if a B1 English speaker *anywhere in the world* recognises them instantly. When in doubt, replace a specific person with a common noun that carries the same feeling.
