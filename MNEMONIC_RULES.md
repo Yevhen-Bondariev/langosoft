@@ -17,8 +17,8 @@ Every mnemonic has exactly **two CAPS words** in a short scene:
 The two CAPS words are the mnemonic. The sentence is just glue.
 
 **Good examples:**
-> `acqua` → "A duck goes QUACK in WATER." — QUACK ≈ acqua, WATER = meaning
-> `dolore` → "A DOLLAR stolen — deep GRIEF / PAIN." — DOLLAR ≈ dolore, GRIEF/PAIN = meaning
+> `acqua` → "A duck goes QUACK in WATER." (QUACK sounds like acqua, WATER is the meaning)
+> `dolore` → "A DOLLAR gets stolen and deep GRIEF fills the heart." (DOLLAR sounds like dolore, GRIEF is the meaning)
 
 ---
 
@@ -86,7 +86,7 @@ Do not use the Italian word itself (or a near-identical form) as the English anc
 
 | ❌ Circular | Problem |
 |------------|---------|
-| TUTTI-FRUITY for `tutti` | tutti = the Italian word |
+| TUTTI-FRUITY for `tutti` | tutti is the Italian word |
 | AMORE for `amore` | same word |
 | DOLCE (D&G brand) for `dolce` | same word |
 | AQUA for `acqua` | same word, Latin |
@@ -117,9 +117,8 @@ Never explicitly state the connection. The scene should imply it.
 | ❌ Redundant | ✓ Better |
 |-------------|---------|
 | "acqua is WATER" | "A duck goes QUACK in WATER." |
-| "aere is AIR" | "Fresh AIR in the open sky — ATMOSPHERE." |
-| "JUSTICE — almost the same word: JUSTICE served" | "JUDGE delivers JUSTICE — fair and firm." |
-| "AQUA is the same word: WATER" | (deleted — too obvious) |
+| "aere is AIR" | "Fresh AIR floats in the open sky and fills the ATMOSPHERE all around." |
+| "JUSTICE — almost the same word: JUSTICE served" | "A JUDGE slams the gavel and JUSTICE gets delivered, fair and final." |
 
 ---
 
@@ -148,41 +147,6 @@ Abstract words make poor anchors because they produce no mental image.
 - No academic language, no multi-clause explanations
 - Inflected base form in parentheses at start: `(cammino) A CAMEL...`
 
-## Rule 11: The scene must be a real scenario — not just a label
-
-"[ANCHOR]: [TRANSLATION]" is not a mnemonic. The scene must show a situation where the anchor word produces, causes, or relates to the meaning.
-
-| ❌ Label only | ✓ Real scene |
-|--------------|-------------|
-| `DOLLY: SAD / SORROWFUL` | `DO LENT: SAD / SORROWFUL — the fast leaves the heart heavy.` |
-| `FACTORY: MAKER` | `FACTORY owner: the MAKER / CREATOR of all.` |
-| `DOLLAR: PAIN` | `A DOLLAR stolen — deep GRIEF / PAIN fills the heart.` |
-
-Gold standard: `città` → "A CHEETAH dashing through the CITY." — vivid action, both CAPS words visible, no redundancy.
-
-## Rule 13: No em-dashes (—), semicolons, or label colons. Every mnemonic must be a sentence with a subject and a verb.
-
-Em-dashes, semicolons, and `CAPS: meaning` colons all create lazy label format. None of them are stories. All three are banned.
-
-| ❌ Half-baked | ✓ Story |
-|--------------|--------|
-| `PUNCTUAL arrival at the exact POINT / MOMENT.` | `A PUNCTUAL train hits the exact POINT and the crowd marks THAT MOMENT.` |
-| `POET — verse-maker, a speaker of truth.` | `A POET climbs the cliff and shouts TRUTH into the wind below.` |
-| `SAVAGE: WILD / SAVAGE and untamed.` | `A SAVAGE beast runs WILD and SAVAGE, completely untamed and free.` |
-| `AUTHOR: the CREATOR of the story.` | `The AUTHOR writes alone at night and becomes the CREATOR of every story.` |
-
-Every mnemonic must answer: **who does what?** If you can't name an actor performing an action, rewrite it.
-
-## Rule 12: Two phonetic anchors are better than one when they cover the full word
-
-When two common English words together cover all the syllables of the Italian word, use both as phonetic anchors — the scene connects them to the meaning.
-
-| Italian | Syllables | Anchors | Scene |
-|---------|-----------|---------|-------|
-| dolente (doh-LEN-teh) | doh + lent | DO + LENT | `DO LENT: SAD / SORROWFUL` |
-| perduta (per-DOO-tah) | per + doo-tah | PEAR + DUTY | `A PEAR on DUTY — LOST` |
-| dolore (doh-LOR-eh) | dol + or | DOLLAR | single word covers both |
-
 ---
 
 ## Rule 10: Maximize syllable coverage
@@ -199,6 +163,54 @@ If you can only match one syllable, it's acceptable — but always search for a 
 
 ---
 
+## Rule 11: The scene must be a real scenario with an actor and an action
+
+"[ANCHOR] [TRANSLATION]" is not a mnemonic. The scene must show a situation where the anchor word produces, causes, or relates to the meaning.
+
+Every mnemonic must answer: **who does what?** If you can't name an actor performing an action, rewrite it.
+
+| ❌ Label only | ✓ Real scene |
+|--------------|-------------|
+| `DOLLY in pain: SAD / SORROWFUL` | `A DOLLY breaks and pain follows: DO LENT leaves the heart SAD and SORROWFUL.` |
+| `FACTORY: MAKER` | `The FACTORY hums all day and IT MAKES and PRODUCES everything.` |
+| `A DOLLAR stolen: PAIN` | `A DOLLAR gets stolen and deep GRIEF fills the heart with PAIN.` |
+
+Gold standard: `città` → "A CHEETAH dashing through the CITY." — vivid action, both CAPS words visible, no redundancy.
+
+---
+
+## Rule 12: Two phonetic anchors are better than one when they cover the full word
+
+When two common English words together cover all the syllables of the Italian word, use both as phonetic anchors — the scene connects them to the meaning.
+
+| Italian | Syllables | Anchors | Scene |
+|---------|-----------|---------|-------|
+| dolente (doh-LEN-teh) | doh + lent | DO + LENT | `DO LENT together: the fast leaves the heart SAD and SORROWFUL.` |
+| perduta (per-DOO-tah) | per + doo-tah | PEAR + DUTY | `A PEAR on DUTY vanishes without a trace, LOST from its post.` |
+| dolore (doh-LOR-eh) | dol + or | DOLLAR | single word covers both syllables |
+
+---
+
+## Rule 13: No em-dashes, semicolons, label colons, or equal signs
+
+All four are shortcuts that replace a story with a label. All four are banned.
+
+| ❌ Banned form | Example |
+|---------------|---------|
+| Em-dash | `POET — verse-maker` |
+| Semicolon | `SONAR detected; SOUND below` |
+| Label colon | `SAVAGE: WILD and untamed` |
+| Equal sign | `O = OR` |
+
+| ❌ Half-baked | ✓ Story |
+|--------------|--------|
+| `PUNCTUAL arrival at the exact POINT / MOMENT.` | `A PUNCTUAL train hits the exact POINT and the crowd marks THAT MOMENT.` |
+| `POET — verse-maker, a speaker of truth.` | `A POET climbs the cliff and shouts TRUTH into the wind below.` |
+| `SAVAGE: WILD / SAVAGE and untamed.` | `A SAVAGE beast runs WILD and SAVAGE, completely untamed and free.` |
+| `O = OR, one or the other.` | `She says OR pick this one, just one or the other, that is what OR means.` |
+
+---
+
 ## Checklist before writing
 
 - [ ] Anchor word is B1–B2 common English
@@ -209,7 +221,8 @@ If you can only match one syllable, it's acceptable — but always search for a 
 - [ ] Anchor word covers as many syllables as possible (not just the first)
 - [ ] No explicit "X means Y" statement
 - [ ] Scene is concrete and visual
-- [ ] Sentence is short
-- [ ] Exactly two CAPS words minimum: one = sound, one = meaning (two phonetic anchors OK when they cover the full word)
-- [ ] Scene is a real scenario, not just "[ANCHOR]: [TRANSLATION]"
+- [ ] Sentence is short (1–2 sentences max)
+- [ ] Exactly two CAPS words minimum: one sounds like the Italian, one is the meaning (two phonetic anchors are OK when they cover the full word)
+- [ ] Scene has an actor performing an action (not just a label)
+- [ ] No em-dashes, semicolons, label colons, or equal signs
 - [ ] Famous brands and proper nouns (GUCCI, MOSES) are OK if not circular
