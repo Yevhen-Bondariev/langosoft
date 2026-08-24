@@ -128,15 +128,60 @@ If the Italian word already sounds exactly like its English meaning, no mnemonic
 
 ---
 
-## Rule 8: Prefer concrete, visual nouns as anchors
+## Rule 8: The anchor must be a noun — and that noun should be the subject of the story
 
-Abstract words make poor anchors because they produce no mental image.
+Nouns are the key. They give the story a subject, and a subject naturally demands an object and an action. Adjectives and verbs make weak anchors because they do not produce an actor.
 
-| ❌ Abstract anchor | ✓ Concrete anchor |
-|-------------------|------------------|
-| MORE (for amor) | LOVE |
-| FULL | BUCKET, CUP |
-| GREAT | GIANT, MOUNTAIN |
+**The structure to chase:**
+
+> **[NOUN anchor as subject] + [action that earns the meaning] + [meaning as object or outcome]**
+
+| ❌ Adjective/verb anchor | ✓ Noun anchor |
+|------------------------|--------------|
+| MISTY sadness fills the room | MESSI sits SAD after losing the World Cup |
+| COZY comfort wraps her | a COZY chair wraps her ← still OK if chair is the image |
+| FUGITIVE ordered to flee | a FUGU fish FLEES from the chef |
+| MORE (for amor) | a BUCKET wanting MORE at the well |
+
+**Why the noun anchor wins:**
+- MESSI is instantly visual; MISTY is an adjective you have to imagine
+- A KIWI standing still earns HERE; a QUIZ just labels it
+- A FUGU fleeing earns FLEE; FUGITIVE just restates the meaning
+
+**The anchor earns the meaning — it does not just sit next to it.** The noun's action or situation should make the meaning feel inevitable, not announced.
+
+| ❌ Label | ✓ Earned |
+|---------|---------|
+| QUIZ appears HERE | a KIWI stands HERE and refuses to move |
+| SEE SO and THUS | a SEE-SAW tips SO far that THUS the other side follows |
+| SENSEI: SAINT | a SENSEI bows before the SAINT, both honored with the highest title |
+
+---
+
+## Rule 14: Choose universal nouns over niche proper nouns
+
+A famous person is only useful if a B1 English speaker *anywhere in the world* recognises them instantly. When in doubt, replace a specific person with a common noun that carries the same feeling.
+
+| ❌ Niche | ✓ Universal |
+|---------|------------|
+| AL GORE (politician, not global) | a LORD |
+| a regional celebrity | a KING, SOLDIER, MONK |
+
+Famous athletes, brands, and biblical figures with truly global recognition are fine (MESSI, MOSES, FERRARI, GUCCI).
+
+---
+
+## Rule 15: Phonetic looseness is acceptable when the noun is iconic
+
+If a noun produces an irresistible image, a one-syllable phonetic match is enough — you do not need every syllable to line up perfectly.
+
+| Italian | Loose but iconic | Why it works |
+|---------|-----------------|--------------|
+| dove (DOH-veh) | DOVE (the bird, "duhv") | the bird flying = WHERE instantly |
+| san | SENSEI | title of reverence = SAINT by analogy |
+| mesti | MESSI | first syllable matches; the image dominates |
+
+This applies only when the noun is so vivid that the mnemonic is unforgettable. A weak noun with loose phonetics is still a bad mnemonic.
 
 ---
 
