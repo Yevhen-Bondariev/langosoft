@@ -264,10 +264,23 @@ All four are shortcuts that replace a story with a label. All four are banned.
 - [ ] Anchor word is not the Italian word itself
 - [ ] Anchor word sounds like the Italian (check pronunciation rules above)
 - [ ] Anchor word covers as many syllables as possible (not just the first)
+- [ ] Anchor word is a **noun** — if not, find the noun version
+- [ ] The noun anchor is the **subject** of the sentence
+- [ ] The noun's action or situation **earns** the meaning — does not just label it
 - [ ] No explicit "X means Y" statement
-- [ ] Scene is concrete and visual
 - [ ] Sentence is short (1–2 sentences max)
 - [ ] Exactly two CAPS words minimum: one sounds like the Italian, one is the meaning (two phonetic anchors are OK when they cover the full word)
-- [ ] Scene has an actor performing an action (not just a label)
 - [ ] No em-dashes, semicolons, label colons, or equal signs
-- [ ] Famous brands and proper nouns (GUCCI, MOSES) are OK if not circular
+- [ ] If using a famous person, they must be universally recognised (MESSI yes, AL GORE no)
+
+---
+
+## Revision checklist (when auditing existing mnemonics)
+
+Flag and replace any entry where:
+
+1. **The anchor is an adjective or verb** — MISTY, COZY, WEARY, FUGITIVE. Find the noun instead (MIST, COT, SOLDIER, FUGU).
+2. **The anchor just sits next to the translation** — "SEE SO and THUS" vs "a SEE-SAW tips SO." The anchor must *do* something that makes the meaning feel like a consequence.
+3. **The anchor is circular** — SAINTLY for SAINT, POETIC for POET. The anchor must be a different word from the meaning.
+4. **The proper noun is niche** — AL GORE, regional politicians, local celebrities. Replace with a universal noun (LORD, MONK, SOLDIER) unless the person is truly global (MESSI, MOSES, FERRARI).
+5. **Syllable coverage could be upgraded** — if the current anchor matches one syllable and a better noun covers two, swap it (QUIZ → KIWI for quivi, MISTY → MESSI for mesti).
