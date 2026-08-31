@@ -59,15 +59,25 @@ public class BooksController(AppDbContext db, BookImportService importService, W
             .ToListAsync();
 
         var freq = new Dictionary<string, int>();
-        var wordRx = new Regex(@"\p{L}+", RegexOptions.Compiled);
+        // Include apostrophe variants so "l'oscura" is one token → NormWord → "loscura",
+        // matching the frontend tokenizer which keeps apostrophes then strips them.
+        var wordRx = new Regex(@"[\p{L}'‘’ʼ]+", RegexOptions.Compiled);
         foreach (var text in texts)
             foreach (Match m in wordRx.Matches(text))
             {
-                var w = StripDiacritics(m.Value.ToLowerInvariant());
-                freq[w] = freq.GetValueOrDefault(w) + 1;
+                var w = NormWord(m.Value);
+                if (w.Length > 0) freq[w] = freq.GetValueOrDefault(w) + 1;
             }
 
         return Ok(freq);
+    }
+
+    private static string NormWord(string text)
+    {
+        text = text.ToLowerInvariant()
+            .Replace("'", "").Replace("‘", "")
+            .Replace("’", "").Replace("ʼ", "");
+        return StripDiacritics(text);
     }
 
     private static string StripDiacritics(string text)

@@ -331,6 +331,14 @@ const SettingsModal = memo(function SettingsModal({
           {/* Narration */}
           {tab === 'narration' && (
             <div className="space-y-5">
+              <div>
+                <p className="text-sm text-slate-300 mb-3">Narration speed</p>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => onRateChange?.(-0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Slow down">−</button>
+                  <span className="flex-1 text-center text-lg font-semibold text-slate-200">{ttsRate.toFixed(1)}×</span>
+                  <button onClick={() => onRateChange?.(0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Speed up">+</button>
+                </div>
+              </div>
               {voices.length > 0 && (
                 <div>
                   <label className="text-sm text-slate-300 block mb-2">English voice</label>
@@ -377,14 +385,6 @@ const SettingsModal = memo(function SettingsModal({
                   );
                 });
               })()}
-              <div>
-                <p className="text-sm text-slate-300 mb-3">Narration speed</p>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => onRateChange?.(-0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Slow down">−</button>
-                  <span className="flex-1 text-center text-lg font-semibold text-slate-200">{ttsRate.toFixed(1)}×</span>
-                  <button onClick={() => onRateChange?.(0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Speed up">+</button>
-                </div>
-              </div>
             </div>
           )}
 
