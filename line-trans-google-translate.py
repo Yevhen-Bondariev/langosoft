@@ -73,13 +73,13 @@ def http_patch(url, body):
         return r.status
 
 
-def translate_line(line: str, key: str) -> str:
+def translate_line(line: str, key: str, source_lang: str = "it") -> str:
     url = f"https://translation.googleapis.com/language/translate/v2?key={key}"
-    resp = http_post(url, {"q": line, "source": "it", "target": "en", "format": "text"})
+    resp = http_post(url, {"q": line, "source": source_lang, "target": "en", "format": "text"})
     return resp["data"]["translations"][0]["translatedText"].strip()
 
 
-def translate_paragraph(para: dict, key: str, dry_run: bool) -> bool:
+def translate_paragraph(para: dict, key: str, dry_run: bool, source_lang: str = "it") -> bool:
     lines = [l.strip() for l in para["text"].split("\n") if l.strip()]
     if not lines:
         return True
@@ -87,7 +87,7 @@ def translate_paragraph(para: dict, key: str, dry_run: bool) -> bool:
     translations = []
     for line in lines:
         try:
-            t = translate_line(line, key)
+            t = translate_line(line, key, source_lang)
             translations.append(t)
             print(f"    {line[:50]:50s} → {t}")
         except Exception as e:
@@ -113,6 +113,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--chapter", type=int, default=2)
     parser.add_argument("--book",    type=int, default=BOOK_ID)
+    parser.add_argument("--source",  default=None,
+                        help="Source language code (default: auto-detect from book)")
     parser.add_argument("--force",   action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--key",     default=None)
@@ -124,7 +126,15 @@ def main():
 
     key = load_key(args.key)
 
-    print(f"Fetching Canto {args.chapter + 1} paragraphs...")
+    # Auto-detect source language from book if not provided
+    source_lang = args.source
+    if not source_lang:
+        book_info = http_get(f"{API_BASE}/api/books")
+        book_map  = {b["id"]: b for b in book_info}
+        source_lang = book_map.get(args.book, {}).get("language", "it")
+    print(f"Source language: {source_lang}")
+
+    print(f"Fetching chapter {args.chapter} paragraphs...")
     paras = http_get(f"{API_BASE}/api/books/{args.book}/chapters/{args.chapter}/paragraphs")
     print(f"  {len(paras)} paragraphs (IDs {paras[0]['id']}–{paras[-1]['id']})")
 
@@ -150,7 +160,7 @@ def main():
     for i, para in enumerate(to_trans):
         preview = para["text"].replace("\n", " | ")[:70]
         print(f"\n[{i+1}/{len(to_trans)}] Para {para['id']}: {preview}")
-        if translate_paragraph(para, key, args.dry_run):
+        if translate_paragraph(para, key, args.dry_run, source_lang):
             ok += 1
         else:
             fail += 1
