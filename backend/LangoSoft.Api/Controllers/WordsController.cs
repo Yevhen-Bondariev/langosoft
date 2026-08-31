@@ -7,6 +7,7 @@ namespace LangoSoft.Api.Controllers;
 [Route("api/words")]
 public class WordsController(WordService wordService) : ControllerBase
 {
+
     public record TranslateRequest(string Word, string Context, string? TargetLanguage);
     public record TranslateResponse(string Translation, string Synonym);
 

@@ -199,6 +199,7 @@ interface SettingsModalProps {
   vocabTotal: number;
   vocabCount: number;
   onVocabReset: () => void;
+  showLine0: boolean; onLine0Change: (v: boolean) => void;
   showLine1: boolean; onLine1Change: (v: boolean) => void;
   showLine2: boolean; onLine2Change: (v: boolean) => void;
   showLine3: boolean; onLine3Change: (v: boolean) => void;
@@ -212,7 +213,7 @@ const SettingsModal = memo(function SettingsModal({
   ttsRate, onRateChange,
   showFreqColors, onFreqColorsToggle,
   vocabTotal, vocabCount, onVocabReset,
-  showLine1, onLine1Change, showLine2, onLine2Change,
+  showLine0, onLine0Change, showLine1, onLine1Change, showLine2, onLine2Change,
   showLine3, onLine3Change, showLine4, onLine4Change,
   onClose,
 }: SettingsModalProps) {
@@ -355,8 +356,9 @@ const SettingsModal = memo(function SettingsModal({
             <div className="space-y-4">
               <p className="text-xs text-slate-500 mb-4">Toggle which lines appear in each verse stanza.</p>
               {[
-                { n: 1, label: 'Italian original',      val: showLine1, onChange: onLine1Change },
-                { n: 2, label: 'Word-by-word gloss',    val: showLine2, onChange: onLine2Change },
+                { n: 0, label: 'Mnemonic stories',       val: showLine0, onChange: onLine0Change },
+                { n: 1, label: 'Italian original',       val: showLine1, onChange: onLine1Change },
+                { n: 2, label: 'Word-by-word gloss',     val: showLine2, onChange: onLine2Change },
                 { n: 3, label: 'Longfellow translation', val: showLine3, onChange: onLine3Change },
                 { n: 4, label: 'Ukrainian translation',  val: showLine4, onChange: onLine4Change },
               ].map(({ n, label, val, onChange }) => (
@@ -484,10 +486,12 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [showSettings, setShowSettings] = useState(false);
   const [showKeyboardRef, setShowKeyboardRef] = useState(false);
   const [showVocabChart, setShowVocabChart] = useState(false);
+  const [showLine0, setShowLine0] = useState(() => localStorage.getItem('show-line0') !== 'false');
   const [showLine1, setShowLine1] = useState(() => localStorage.getItem('show-line1') !== 'false');
   const [showLine2, setShowLine2] = useState(() => localStorage.getItem('show-line2') !== 'false');
   const [showLine3, setShowLine3] = useState(() => localStorage.getItem('show-line3') !== 'false');
   const [showLine4, setShowLine4] = useState(() => localStorage.getItem('show-line4') !== 'false');
+  const [mnemonics, setMnemonics] = useState<Record<string, string>>({});
 
   const lineLiteraryCache = useRef<Map<string, string>>(new Map());
   // Per-word translation cache: "${paraIdx}::en" → Map<normWord, translation> (filled by API/DB)
@@ -513,11 +517,19 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     vocabInitializedChapterRef.current = -1;
     localStorage.removeItem(`vocab_${book.id}`);
   }, [book.id]);
+  const handleLine0Change = useCallback((v: boolean) => { setShowLine0(v); localStorage.setItem('show-line0', String(v)); }, []);
   const handleLine1Change = useCallback((v: boolean) => { setShowLine1(v); localStorage.setItem('show-line1', String(v)); }, []);
   const handleLine2Change = useCallback((v: boolean) => { setShowLine2(v); localStorage.setItem('show-line2', String(v)); }, []);
   const handleLine3Change = useCallback((v: boolean) => { setShowLine3(v); localStorage.setItem('show-line3', String(v)); }, []);
   const handleLine4Change = useCallback((v: boolean) => { setShowLine4(v); localStorage.setItem('show-line4', String(v)); }, []);
   const handleCloseSettings = useCallback(() => { setShowSettings(false); currentWordRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    fetch('/mnemonics.json')
+      .then(r => r.ok ? r.json() as Promise<Record<string, string>> : {})
+      .then(setMnemonics)
+      .catch(() => {});
+  }, []);
 
   // Archaism cache: paragraphId → Map<lowercase-word, explanation>
   const [archaisms, setArchaisms] = useState<Map<string, string>>(new Map());
@@ -841,8 +853,6 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const wordTokens = getWordTokens(tokens);
   const totalChapters = chapters.length;
   const currentChapter = chapters.find(c => c.number === chapterNum);
-  const currentWordRaw = wordTokens[currentWordIndex]?.rawWord?.toLowerCase() ?? '';
-  const currentArchaism = archaisms.get(currentWordRaw) ?? null;
   const bookLangName = LANG_NAMES[book.language] ?? book.language;
 
   // Announce text to NVDA via aria-live. Clear first so repeat presses re-fire.
@@ -1524,7 +1534,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     retryRecall, explainRecall, enterRecall, exitRecall, announceToNvda,
     customQuestionOpen, customAnswer, submitCustomQuestion,
     saveProgress, book.language, ttsRate, onRateToggle, onRateChange, showStatus,
-    showSettings, showKeyboardRef, playLineBell, currentArchaism, playArchaismTone,
+    showSettings, showKeyboardRef, playLineBell, playArchaismTone,
   ]);
 
   // Swipe gestures for mobile reading pane
@@ -1557,7 +1567,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
   const renderParagraph = (para: Paragraph, paraIdx: number) => {
     const isCurrent = paraIdx === currentParagraphIndex;
     const paraTokens = allTokens[paraIdx] ?? [];
-    const isPoetryNonEn = para.text.includes('\n') && book.language !== 'en';
+    const isPoetryNonEn = book.language !== 'en';
 
     const outerClass = `px-4 py-3 rounded-lg mb-2 transition-colors ${
       isCurrent
@@ -1664,6 +1674,70 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             const ukLine = ukrainianLines[li]?.trim() ?? '';
             return (
               <div key={li} className={li > 0 ? 'mt-3' : ''}>
+                {/* Line 0 — mnemonic story for the active word only */}
+                {showLine0 && isCurrent && (() => {
+                  const PART_EXPAND: Record<string, string> = {
+                    ch: "che", m: "mi", v: "vi", t: "ti", d: "di",
+                    c: "ci",   s: "si", i: "io", n: "non", l: "lo",
+                    // multi-char elided prefixes: 'nferno → inferno etc.
+                    com: "come",
+                    nferno: "inferno", mpedisce: "impedisce", mpediva: "impediva",
+                    ncontro: "incontro", nvidia: "invidia",
+                  };
+                  const active = wordItems.find(({ token }) => token.wordIndex === currentWordIndex);
+                  if (!active) return null;
+                  const lower = active.token.rawWord.toLowerCase();
+
+                  // Direct lookup — simple word
+                  if (mnemonics[lower]) {
+                    // const imgKey = lower.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+                    return (
+                      <div className="mb-0.5" onClick={e => e.stopPropagation()}>
+                        <div className="font-mono text-sm leading-snug text-violet-300 italic select-text cursor-text">
+                          <span className="not-italic font-bold text-violet-500 text-xs">{active.token.rawWord} → </span>
+                          {archaisms.has(lower) && <span className="not-italic text-[10px] font-semibold text-violet-500/50 uppercase tracking-wide mr-1">arch.</span>}
+                          {mnemonics[lower]}
+                        </div>
+                        {/* <img
+                          src={`/mnemonics-images/${imgKey}.jpg`}
+                          alt=""
+                          className="w-56 h-56 object-cover rounded-lg flex-shrink-0 opacity-90"
+                          onError={e => { e.currentTarget.style.display = 'none'; }}
+                        /> */}
+                      </div>
+                    );
+                  }
+
+                  // Contraction lookup — split on apostrophe, resolve each part
+                  const rawParts = lower.split(/[‘‘’ʼ`]/).filter(p => p.length > 0);
+                  if (rawParts.length < 2) return null;
+                  const resolved = rawParts.map(p => ({ part: p, form: PART_EXPAND[p] ?? p }));
+                  const entries = resolved
+                    .map(({ form, part }) => ({ form, story: mnemonics[form] ?? mnemonics[part] }))
+                    .filter(e => !!e.story);
+                  if (entries.length === 0) return null;
+                  const expansion = resolved.map(r => r.form).join(" + ");
+                  // const contrImgKey = resolved[resolved.length - 1].form
+                  //   .normalize('NFKD').replace(/[̀-ͯ]/g, '');
+                  return (
+                    <div className="mb-0.5" onClick={e => e.stopPropagation()}>
+                      <div className="font-mono text-xs not-italic text-violet-500/60 mb-0.5 select-text cursor-text">
+                        {active.token.rawWord} = {expansion}
+                      </div>
+                      {entries.map(({ form, story }, i) => (
+                        <div key={i} className="font-mono text-sm leading-snug text-violet-300 italic select-text cursor-text">
+                          <span className="not-italic font-bold text-violet-500 text-xs">{form} → </span>{story}
+                        </div>
+                      ))}
+                      {/* <img
+                        src={`/mnemonics-images/${contrImgKey}.jpg`}
+                        alt=""
+                        className="w-56 h-56 object-cover rounded-lg flex-shrink-0 opacity-90"
+                        onError={e => { e.currentTarget.style.display = 'none'; }}
+                      /> */}
+                    </div>
+                  );
+                })()}
                 {/* Each word paired with its gloss in one column */}
                 {(showLine1 || (showLine2 && hasGloss)) && (
                   <div className="flex flex-wrap gap-x-3 gap-y-0">
@@ -1875,19 +1949,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         </div>
       )}
 
-      {/* Archaism explanation panel */}
-      {currentArchaism && (
-        <div className="px-4 py-2 bg-violet-950/40 border-b border-violet-800/50 shrink-0 flex items-center gap-3 text-sm" role="status" aria-live="polite">
-          <span className="text-violet-400 text-[10px] font-bold uppercase tracking-widest shrink-0">Archaic</span>
-          <span className="text-violet-700 text-xs" aria-hidden="true">·</span>
-          <span className="text-slate-300 text-xs">{currentArchaism}</span>
-          {isMobile ? (
-            <button onClick={() => { speak(currentArchaism, { lang: 'en' }); }} className="ml-auto text-violet-400 text-xs px-2 py-0.5 rounded bg-violet-900/40" aria-label="Hear archaism explanation">🔊</button>
-          ) : (
-            <span className="ml-auto text-violet-700/60 text-[10px]">a = hear</span>
-          )}
-        </div>
-      )}
 
       {/* Grammar analysis panel */}
       {(grammarLoading || grammarTenses !== null) && (
@@ -2301,6 +2362,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           vocabTotal={Object.keys(wordFreq).length}
           vocabCount={vocabCount}
           onVocabReset={handleVocabReset}
+          showLine0={showLine0} onLine0Change={handleLine0Change}
           showLine1={showLine1} onLine1Change={handleLine1Change}
           showLine2={showLine2} onLine2Change={handleLine2Change}
           showLine3={showLine3} onLine3Change={handleLine3Change}
