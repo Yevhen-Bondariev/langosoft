@@ -5,7 +5,7 @@ import Reader from './components/Reader';
 import Flashcards from './components/Flashcards';
 import WordList from './components/WordList';
 import ChapterList from './components/ChapterList';
-import Essay from './components/Essay';
+// import Essay from './components/Essay';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { useVoicePreference } from './hooks/useVoicePreference';
 import { useLanguagePreference } from './hooks/useLanguagePreference';
@@ -25,7 +25,7 @@ export default function App() {
   const [showPhonemeHints, setShowPhonemeHints] = useState(false);
   const [ttsRate, setTtsRate] = useState(() => parseFloat(localStorage.getItem('tts-rate') ?? '0.9'));
   const [theme, setTheme] = useState(() => localStorage.getItem('langosoft-theme') ?? 'dark');
-  const { voices, selectedVoice, selectedVoiceName, setVoice } = useVoicePreference();
+  const { voices, selectedVoice, selectedVoiceName, setVoice, allVoices, langVoiceNames, getVoiceForLang, setVoiceForLang } = useVoicePreference();
   const { languages, selectedLang, setLanguage } = useLanguagePreference();
   const isMobile = useIsMobile();
 
@@ -139,7 +139,7 @@ export default function App() {
   const dueCount = flashcards.filter(f => new Date(f.nextReview) <= new Date()).length;
 
   useEffect(() => {
-    const views: AppView[] = ['reader', 'flashcards', 'words', 'essay'];
+    const views: AppView[] = ['reader', 'flashcards', 'words'/*, 'essay'*/];
     const handler = (e: KeyboardEvent) => {
       if (!e.altKey) return;
       const idx = parseInt(e.key) - 1;
@@ -185,7 +185,7 @@ export default function App() {
     { id: 'reader',     label: 'Reader',     icon: '📖', shortcut: 'Alt+1' },
     { id: 'flashcards', label: 'Flashcards', icon: '🗂',  shortcut: 'Alt+2', badge: dueCount > 0 ? dueCount : undefined },
     { id: 'words',      label: 'My Words',   icon: '📝', shortcut: 'Alt+3' },
-    { id: 'essay',      label: 'Essay',      icon: '✍️',  shortcut: 'Alt+4' },
+    // { id: 'essay',      label: 'Essay',      icon: '✍️',  shortcut: 'Alt+4' },
   ];
 
   // Shared sidebar content (used by both desktop aside and mobile drawer)
@@ -201,7 +201,7 @@ export default function App() {
             className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
             aria-label="Select book"
           >
-            {books.map(b => (
+            {books.filter(b => ['La Divina Commedia', 'Faust, Part One', 'Faust, Part Two'].includes(b.title)).map(b => (
               <option key={b.id} value={b.id}>{b.title}</option>
             ))}
           </select>
@@ -340,6 +340,10 @@ export default function App() {
             voices={voices}
             voiceName={selectedVoiceName}
             onVoiceChange={setVoice}
+            allVoices={allVoices}
+            langVoiceNames={langVoiceNames}
+            getVoiceForLang={getVoiceForLang}
+            onLangVoiceChange={setVoiceForLang}
             languages={languages}
             onLangChange={setLanguage}
             onPhonemeToggle={() => setShowPhonemeHints(v => !v)}
@@ -355,7 +359,7 @@ export default function App() {
           />
         )}
         {view === 'words' && <WordList flashcards={flashcards} categories={categories} onUpdate={loadFlashcards} />}
-        {view === 'essay' && <Essay book={book} chapters={chapters} currentChapterNum={currentChapterNum} />}
+        {/* {view === 'essay' && <Essay book={book} chapters={chapters} currentChapterNum={currentChapterNum} />} */}
       </main>
     </div>
   );

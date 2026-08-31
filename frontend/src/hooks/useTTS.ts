@@ -20,16 +20,26 @@ const LANG_RATE_SCALE: Partial<Record<string, number>> = {
   uk: 1.25,
 };
 
-// Pick the best available voice for a language prefix.
-// Prefers Google voices (highest quality, typically female for Romance languages)
-// over system/offline voices which are often lower-quality male.
+type VoiceResolver = (lang: string) => SpeechSynthesisVoice | null;
+
+// Fallback auto-picker used when no resolver is provided.
 function pickVoice(langPrefix: string): SpeechSynthesisVoice | null {
   const matches = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith(langPrefix));
   if (matches.length === 0) return null;
   return matches.find(v => v.name.includes('Google')) ?? matches[0];
 }
 
-export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultLang = 'en') {
+export function useTTS(
+  voice?: SpeechSynthesisVoice | null,
+  rate = 0.9,
+  defaultLang = 'en',
+  getVoiceForLang?: VoiceResolver,
+) {
+  const resolveVoice = useCallback((langPrefix: string): SpeechSynthesisVoice | null => {
+    if (langPrefix === 'en') return voice ?? null;
+    return getVoiceForLang ? getVoiceForLang(langPrefix) : pickVoice(langPrefix);
+  }, [voice, getVoiceForLang]);
+
   const speak = useCallback((text: string, options?: SpeakOptions) => {
     window.speechSynthesis.cancel();
     stopUkrainian();
@@ -47,21 +57,15 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
     u.rate = (options?.rate ?? rate) * (LANG_RATE_SCALE[langPrefix] ?? 1);
     u.pitch = options?.pitch ?? 1;
 
-    if (langPrefix === 'en' && voice) {
-      u.voice = voice; u.lang = voice.lang;
+    const match = resolveVoice(langPrefix);
+    if (match) {
+      u.voice = match; u.lang = match.lang;
     } else {
-      const match = pickVoice(langPrefix);
-      if (match) {
-        u.voice = match; u.lang = match.lang;
-      } else if (voice) {
-        u.voice = voice; u.lang = voice.lang;
-      } else {
-        u.lang = targetLang;
-      }
+      u.lang = targetLang;
     }
 
     window.speechSynthesis.speak(u);
-  }, [voice, rate, defaultLang]);
+  }, [resolveVoice, voice, rate, defaultLang]);
 
   // Speak multiple texts in sequence, waiting for each to finish before starting the next.
   const speakChain = useCallback((items: ChainItem[]) => {
@@ -74,13 +78,9 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
       if (item.lang) {
         const langPrefix = item.lang.split('-')[0];
         u.rate = (item.rate ?? rate) * (LANG_RATE_SCALE[langPrefix] ?? 1);
-        if (langPrefix === 'en' && voice) {
-          u.voice = voice; u.lang = voice.lang;
-        } else {
-          const match = pickVoice(langPrefix);
-          if (match) { u.voice = match; u.lang = match.lang; }
-          else u.lang = item.lang;
-        }
+        const match = resolveVoice(langPrefix);
+        if (match) { u.voice = match; u.lang = match.lang; }
+        else u.lang = item.lang;
       } else {
         u.rate = item.rate ?? rate;
         if (voice) { u.voice = voice; u.lang = voice.lang; }
@@ -91,7 +91,7 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
       window.speechSynthesis.speak(u);
     };
     go(0);
-  }, [voice, rate]);
+  }, [resolveVoice, voice, rate]);
 
   const stop = useCallback(() => {
     window.speechSynthesis.cancel();

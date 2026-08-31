@@ -198,7 +198,6 @@ interface SettingsModalProps {
   onFreqColorsToggle: () => void;
   vocabTotal: number;
   vocabCount: number;
-  onVocabReset: () => void;
   showLine0: boolean; onLine0Change: (v: boolean) => void;
   showLine1: boolean; onLine1Change: (v: boolean) => void;
   showLine2: boolean; onLine2Change: (v: boolean) => void;
@@ -207,6 +206,10 @@ interface SettingsModalProps {
   showLine5: boolean; onLine5Change: (v: boolean) => void;
   theme?: string;
   onThemeChange?: (t: string) => void;
+  bookLangName: string;
+  allVoices?: SpeechSynthesisVoice[];
+  langVoiceNames?: Record<string, string>;
+  onLangVoiceChange?: (lang: string, name: string) => void;
   onClose: () => void;
 }
 
@@ -215,11 +218,13 @@ const SettingsModal = memo(function SettingsModal({
   languages, selectedLangCode, selectedLangLabel, onLangChange,
   ttsRate, onRateChange,
   showFreqColors, onFreqColorsToggle,
-  vocabTotal, vocabCount, onVocabReset,
+  vocabTotal, vocabCount,
   showLine0, onLine0Change, showLine1, onLine1Change, showLine2, onLine2Change,
   showLine3, onLine3Change, showLine4, onLine4Change,
   showLine5, onLine5Change,
   theme, onThemeChange,
+  bookLangName,
+  allVoices = [], langVoiceNames = {}, onLangVoiceChange,
   onClose,
 }: SettingsModalProps) {
   const [tab, setTab] = useState('frequency');
@@ -296,15 +301,9 @@ const SettingsModal = memo(function SettingsModal({
               </div>
               <div className="pt-4 border-t border-slate-700">
                 <p className="text-sm text-slate-300 mb-1">Vocabulary progress</p>
-                <p className="text-xs text-slate-500 mb-3">
-                  {vocabCount} / {vocabTotal} unique words seen ({vocabTotal > 0 ? (vocabCount / vocabTotal * 100).toFixed(1) : '0.0'}%)
+                <p className="text-xs text-slate-500">
+                  {vocabCount} / {vocabTotal} unique words seen up to cursor ({vocabTotal > 0 ? (vocabCount / vocabTotal * 100).toFixed(1) : '0.0'}%)
                 </p>
-                <button
-                  onClick={onVocabReset}
-                  className="px-3 py-1.5 rounded bg-red-900/40 border border-red-800/50 text-red-400 text-xs hover:bg-red-900/60 transition-colors"
-                >
-                  Reset vocabulary progress
-                </button>
               </div>
             </div>
           )}
@@ -334,7 +333,7 @@ const SettingsModal = memo(function SettingsModal({
             <div className="space-y-5">
               {voices.length > 0 && (
                 <div>
-                  <label className="text-sm text-slate-300 block mb-2">Voice</label>
+                  <label className="text-sm text-slate-300 block mb-2">English voice</label>
                   <select
                     value={voiceName}
                     onChange={e => onVoiceChange?.(e.target.value)}
@@ -346,6 +345,38 @@ const SettingsModal = memo(function SettingsModal({
                   </select>
                 </div>
               )}
+              {(() => {
+                // Show a voice selector for each non-English, non-Ukrainian language that has voices
+                const LANG_LABELS: Record<string, string> = {
+                  it: 'Italian', de: 'German', fr: 'French', es: 'Spanish',
+                  pt: 'Portuguese', la: 'Latin', el: 'Greek', nl: 'Dutch',
+                  pl: 'Polish', ru: 'Russian', ar: 'Arabic', zh: 'Chinese',
+                  ja: 'Japanese', ko: 'Korean',
+                };
+                const groups = Object.entries(LANG_LABELS).map(([prefix, label]) => ({
+                  prefix, label,
+                  voiceList: allVoices.filter(v => v.lang.startsWith(prefix)),
+                })).filter(g => g.voiceList.length > 0);
+                if (groups.length === 0) return null;
+                return groups.map(({ prefix, label, voiceList }) => {
+                  const defaultName = voiceList.find(v => v.name.includes('Google'))?.name ?? voiceList[0]?.name ?? '';
+                  const selectedName = langVoiceNames[prefix] || defaultName;
+                  return (
+                    <div key={prefix}>
+                      <label className="text-sm text-slate-300 block mb-2">{label} voice</label>
+                      <select
+                        value={selectedName}
+                        onChange={e => onLangVoiceChange?.(prefix, e.target.value)}
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                      >
+                        {voiceList.map(v => (
+                          <option key={v.name} value={v.name}>{v.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                });
+              })()}
               <div>
                 <p className="text-sm text-slate-300 mb-3">Narration speed</p>
                 <div className="flex items-center gap-3">
@@ -362,7 +393,7 @@ const SettingsModal = memo(function SettingsModal({
             <div className="space-y-4">
               <p className="text-xs text-slate-500 mb-4">Toggle which lines appear in each verse stanza.</p>
               {[
-                { n: 1, label: 'Italian original',       val: showLine1, onChange: onLine1Change },
+                { n: 1, label: `${bookLangName} original`,  val: showLine1, onChange: onLine1Change },
                 { n: 2, label: 'Word-by-word gloss',     val: showLine2, onChange: onLine2Change },
                 { n: 5, label: 'Literal translation',    val: showLine5, onChange: onLine5Change },
                 { n: 3, label: 'Literary translation',  val: showLine3, onChange: onLine3Change },
@@ -456,6 +487,10 @@ interface Props {
   voices?: SpeechSynthesisVoice[];
   voiceName?: string;
   onVoiceChange?: (name: string) => void;
+  allVoices?: SpeechSynthesisVoice[];
+  langVoiceNames?: Record<string, string>;
+  getVoiceForLang?: (lang: string) => SpeechSynthesisVoice | null;
+  onLangVoiceChange?: (lang: string, name: string) => void;
   languages?: LanguageOption[];
   onLangChange?: (code: string) => void;
   onPhonemeToggle?: () => void;
@@ -471,7 +506,7 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, allVoices = [], langVoiceNames = {}, getVoiceForLang, onLangVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -539,19 +574,8 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const maxFreqRef = useRef(1);
   const [showFreqColors, setShowFreqColors] = useState(false);
 
-  const learnedWordsRef = useRef<Set<string>>(new Set());
-  const [vocabCount, setVocabCount] = useState(0);
-  const vocabSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const vocabInitializedChapterRef = useRef(-1);
-
   // Stable callbacks for SettingsModal (avoid re-renders of the memo'd component)
   const handleFreqColorsToggle = useCallback(() => setShowFreqColors(v => !v), []);
-  const handleVocabReset = useCallback(() => {
-    learnedWordsRef.current.clear();
-    setVocabCount(0);
-    vocabInitializedChapterRef.current = -1;
-    localStorage.removeItem(`vocab_${book.id}`);
-  }, [book.id]);
   const handleLine0Change = useCallback((v: boolean) => { setShowLine0(v); localStorage.setItem('show-line0', String(v)); }, []);
   const handleLine1Change = useCallback((v: boolean) => { setShowLine1(v); localStorage.setItem('show-line1', String(v)); }, []);
   const handleLine2Change = useCallback((v: boolean) => { setShowLine2(v); localStorage.setItem('show-line2', String(v)); }, []);
@@ -619,11 +643,54 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const tokens = allTokens[currentParagraphIndex] ?? [];
   const wordsPerParagraph = useMemo(() => allTokens.map(t => getWordTokens(t).length), [allTokens]);
 
+  const [chapterVocabCache, setChapterVocabCache] = useState<Record<number, string[]>>(() => {
+    try { return JSON.parse(localStorage.getItem(`vocab_ch_${book.id}`) ?? '{}') as Record<number, string[]>; }
+    catch { return {}; }
+  });
+
+  useEffect(() => {
+    try { setChapterVocabCache(JSON.parse(localStorage.getItem(`vocab_ch_${book.id}`) ?? '{}') as Record<number, string[]>); }
+    catch { setChapterVocabCache({}); }
+  }, [book.id]);
+
+  useEffect(() => {
+    if (book.language === 'en' || allTokens.length === 0) return;
+    const seen = new Set<string>();
+    for (const tokList of allTokens)
+      for (const tok of getWordTokens(tokList)) {
+        const key = normWord(tok.rawWord || tok.text || '');
+        if (key) seen.add(key);
+      }
+    const words = [...seen];
+    setChapterVocabCache(prev => {
+      if ((prev[chapterNum]?.length ?? -1) === words.length) return prev;
+      const updated = { ...prev, [chapterNum]: words };
+      localStorage.setItem(`vocab_ch_${book.id}`, JSON.stringify(updated));
+      return updated;
+    });
+  }, [allTokens, chapterNum, book.id, book.language]);
+
+  const vocabCount = useMemo(() => {
+    if (book.language === 'en') return 0;
+    const seen = new Set<string>();
+    for (let c = 0; c < chapterNum; c++)
+      for (const w of (chapterVocabCache[c] ?? [])) seen.add(w);
+    for (let i = 0; i <= currentParagraphIndex; i++) {
+      const wTokens = getWordTokens(allTokens[i] ?? []);
+      const limit = i < currentParagraphIndex ? wTokens.length : currentWordIndex + 1;
+      for (let j = 0; j < limit; j++) {
+        const key = normWord(wTokens[j]?.rawWord || wTokens[j]?.text || '');
+        if (key) seen.add(key);
+      }
+    }
+    return seen.size;
+  }, [chapterVocabCache, chapterNum, allTokens, currentParagraphIndex, currentWordIndex, book.language]);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const translationInputRef = useRef<HTMLInputElement>(null);
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate, book.language);
+  const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate, book.language, getVoiceForLang);
 
   // Load progress on mount
   useEffect(() => {
@@ -645,43 +712,6 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       setWordFreq(freq);
     }).catch(() => {});
   }, [book.id]);
-
-  // When book changes, reset the initialization flag and load stored words from localStorage
-  useEffect(() => {
-    if (book.language === 'en') return;
-    vocabInitializedChapterRef.current = -1;
-    const stored = localStorage.getItem(`vocab_${book.id}`);
-    try {
-      learnedWordsRef.current = stored ? new Set(JSON.parse(stored) as string[]) : new Set();
-    } catch {
-      learnedWordsRef.current = new Set();
-    }
-    setVocabCount(learnedWordsRef.current.size);
-  }, [book.id, book.language]);
-
-  // Once paragraphs load for a chapter, scan all completed stanzas up to the current position.
-  // Runs once per chapter (chapterNum guards re-init). Handles page reload + chapter switch.
-  useEffect(() => {
-    if (book.language === 'en' || allTokens.length === 0) return;
-    if (vocabInitializedChapterRef.current === chapterNum) return;
-    vocabInitializedChapterRef.current = chapterNum;
-    for (let i = 0; i <= currentParagraphIndex; i++) {
-      const wTokens = getWordTokens(allTokens[i] ?? []);
-      const limit = i < currentParagraphIndex ? wTokens.length : currentWordIndex + 1;
-      for (let j = 0; j < limit; j++) {
-        const raw = wTokens[j]?.rawWord || wTokens[j]?.text || '';
-        const key = normWord(raw);
-        if (key) learnedWordsRef.current.add(key);
-      }
-    }
-    setVocabCount(learnedWordsRef.current.size);
-    if (vocabSaveTimerRef.current) clearTimeout(vocabSaveTimerRef.current);
-    vocabSaveTimerRef.current = setTimeout(() => {
-      localStorage.setItem(`vocab_${book.id}`, JSON.stringify([...learnedWordsRef.current]));
-    }, 2000);
-  // currentParagraphIndex/currentWordIndex captured at chapter load moment; chapterNum triggers re-run on chapter switch
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allTokens, chapterNum, book.language, book.id]);
 
   // Load static flat word dictionary for non-English books (generated once, never changes).
   // File: public/gloss-{lang}.json — flat { normalizedWord: englishTranslation }
@@ -841,23 +871,6 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const word = token?.rawWord || token?.text || '';
     setCurrentWordGloss(word ? resolveGloss(word, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current) : '');
   }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, glossCacheVersion, staticGlossLoaded]);
-
-  // Track vocabulary: add the current word's normWord key to the learned set on every word navigation
-  useEffect(() => {
-    if (book.language === 'en') return;
-    const wTokens = getWordTokens(allTokens[currentParagraphIndex] ?? []);
-    const token = wTokens[currentWordIndex];
-    const raw = token?.rawWord || token?.text || '';
-    if (!raw) return;
-    const key = normWord(raw);
-    if (!key || learnedWordsRef.current.has(key)) return;
-    learnedWordsRef.current.add(key);
-    setVocabCount(learnedWordsRef.current.size);
-    if (vocabSaveTimerRef.current) clearTimeout(vocabSaveTimerRef.current);
-    vocabSaveTimerRef.current = setTimeout(() => {
-      localStorage.setItem(`vocab_${book.id}`, JSON.stringify([...learnedWordsRef.current]));
-    }, 2000);
-  }, [currentWordIndex, currentParagraphIndex, allTokens, book.language, book.id]);
 
   // Fetch archaism annotations for the current paragraph (non-English books only, cached per paragraphId)
   useEffect(() => {
@@ -1476,19 +1489,19 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         if (line) { speak(line); announceToNvda(line); }
         return;
       }
-      // ── s ── speak word-by-word English gloss of current verse line
+      // ── s ── speak literal (line-by-line Google Translate) translation of current verse line
       if (key === 's' || key === 'S') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
-        const line = lineAtWord(para.text, currentWordIndex);
-        if (!line) return;
-        const perParaMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
-        const wordRx = /[\p{L}'\u2018\u2019\u02BC`\-]+/gu;
-        const words = Array.from(line.matchAll(wordRx)).map(m => m[0]);
-        const glossParts = words.map(w => resolveGloss(w, perParaMap, staticGlossRef.current)).filter(Boolean);
-        if (glossParts.length > 0) { speak(glossParts.join(' '), { lang: 'en' }); announceToNvda(glossParts.join(' ')); }
-        else speak('No gloss available', { lang: 'en' });
+        const { lineIndex: sLineIndex } = lineIndexAtWord(para.text, currentWordIndex);
+        const sLiteralLines: string[] = (() => {
+          try { return para.lineTransJson ? JSON.parse(para.lineTransJson) as string[] : []; }
+          catch { return []; }
+        })();
+        const sLitLine = sLiteralLines[sLineIndex]?.trim() ?? '';
+        if (sLitLine) { speak(sLitLine, { lang: 'en' }); announceToNvda(sLitLine); }
+        else speak('No literal translation for this line', { lang: 'en' });
         return;
       }
       // ── d ── speak Longfellow (English literary) translation of current verse line
@@ -2004,9 +2017,9 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
       <div className="flex items-center gap-1.5 px-4 py-1 bg-slate-950 border-b border-slate-800 shrink-0">
         <button
           onClick={() => handleLine1Change(!showLine1)}
-          role="switch" aria-checked={showLine1} aria-label="Toggle line Italian"
+          role="switch" aria-checked={showLine1} aria-label={`Toggle line ${bookLangName}`}
           className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors select-none ${showLine1 ? 'text-slate-200 bg-slate-800' : 'text-slate-600 bg-transparent'}`}
-        >Italian</button>
+        >{bookLangName}</button>
         {/* Gloss + translations — grouped with a border */}
         <div className="flex items-center gap-0.5 border border-slate-700 rounded px-1 py-0.5">
           {([
@@ -2332,7 +2345,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 aria-label="Check (Enter)"
                 aria-keyshortcuts="Enter"
                 onClick={() => submitRecall()}
-                className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
+                className="flex flex-col items-center w-14 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
               >
                 <span className="text-[10px] leading-none mb-0.5">Check</span>
                 <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">Enter</kbd>
@@ -2343,7 +2356,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 aria-label="Retry (r)"
                 aria-keyshortcuts="r"
                 onClick={() => retryRecall()}
-                className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
+                className="flex flex-col items-center w-14 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
               >
                 <span className="text-[10px] leading-none mb-0.5">Retry</span>
                 <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">r</kbd>
@@ -2383,10 +2396,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
               { label: 'Stop',      key: 'Ctrl', ariaKey: 'Control', onClick: () => stop() },
               { label: 'Word',      key: '5',    ariaKey: '5',       onClick: () => { const t = wordTokens[currentWordIndex]; if (!t) return; const w = t.rawWord || t.text; const tr = resolveGloss(w, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current); if (book.language !== 'en' && tr) { speakChain([{ text: w, lang: book.language }, { text: tr, lang: 'en' }]); } else { speak(w); } } },
               { label: 'Line',      key: '8',    ariaKey: '8',       onClick: () => readCurrentLine() },
-              { label: 'Italian',   key: 'a',    ariaKey: 'a',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (line) speak(line); } },
-              { label: 'Gloss',     key: 's',    ariaKey: 's',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (!line) return; const pm = glossWordCache.current.get(`${currentParagraphIndex}::en`); const words = Array.from(line.matchAll(/[\p{L}'‘’ʼ`\-]+/gu)).map(m2 => m2[0]); const parts = words.map(w => resolveGloss(w, pm, staticGlossRef.current)).filter(Boolean); speak(parts.join(' ') || 'No gloss', { lang: 'en' }); } },
-              { label: 'English',   key: 'd',    ariaKey: 'd',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const lf = (para.longfellowText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(lf || 'No Longfellow', { lang: 'en' }); } },
-              { label: 'Ukrainian', key: 'f',    ariaKey: 'f',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const uk = (para.ukrainianText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(uk || 'No Ukrainian', { lang: 'uk' }); } },
+              { label: 'Original',  key: 'a',    ariaKey: 'a',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (line) speak(line); } },
+              { label: 'Literal',   key: 's',    ariaKey: 's',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (!line) return; const pm = glossWordCache.current.get(`${currentParagraphIndex}::en`); const words = Array.from(line.matchAll(/[\p{L}'''ʼ`\-]+/gu)).map(m2 => m2[0]); const parts = words.map(w => resolveGloss(w, pm, staticGlossRef.current)).filter(Boolean); speak(parts.join(' ') || 'No gloss', { lang: 'en' }); } },
+              { label: 'Literary',  key: 'd',    ariaKey: 'd',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const lf = (para.longfellowText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(lf || 'No Longfellow', { lang: 'en' }); } },
+              { label: 'Native',    key: 'f',    ariaKey: 'f',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const uk = (para.ukrainianText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(uk || 'No Ukrainian', { lang: 'uk' }); } },
               { label: 'Mnemonic',  key: 'g',    ariaKey: 'g',       onClick: () => { const word = wordTokens[currentWordIndex]; if (!word) return; const m = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, ''); speak(m || 'No mnemonic', { lang: 'en' }); } },
               { label: 'Flashcard', key: '0',    ariaKey: '0',       onClick: () => openAddFlashcard() },
               { label: 'Help',      key: 'h',    ariaKey: 'h',       onClick: () => setShowKeyboardRef(true) },
@@ -2396,7 +2409,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 aria-label={`${label} (${ariaKey})`}
                 aria-keyshortcuts={ariaKey}
                 onClick={onClick}
-                className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
+                className="flex flex-col items-center w-14 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
               >
                 <span className="text-[10px] leading-none mb-0.5">{label}</span>
                 <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">{key}</kbd>
@@ -2423,7 +2436,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           onFreqColorsToggle={handleFreqColorsToggle}
           vocabTotal={Object.keys(wordFreq).length}
           vocabCount={vocabCount}
-          onVocabReset={handleVocabReset}
           showLine0={showLine0} onLine0Change={handleLine0Change}
           showLine1={showLine1} onLine1Change={handleLine1Change}
           showLine2={showLine2} onLine2Change={handleLine2Change}
@@ -2432,6 +2444,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           showLine5={showLine5} onLine5Change={handleLine5Change}
           theme={theme}
           onThemeChange={onThemeChange}
+          bookLangName={bookLangName}
+          allVoices={allVoices}
+          langVoiceNames={langVoiceNames}
+          onLangVoiceChange={onLangVoiceChange}
           onClose={handleCloseSettings}
         />
       )}
@@ -2483,8 +2499,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 {
                   title: 'Narration — current verse line',
                   rows: [
-                    ['a', 'Italian original'],
-                    ['s', 'Word-by-word English gloss'],
+                    ['a', `${bookLangName} original`],
+                    ['s', 'Literal translation'],
                     ['d', 'Longfellow literary translation'],
                     ['f', 'Ukrainian translation'],
                     ['g', 'Mnemonic for current word'],

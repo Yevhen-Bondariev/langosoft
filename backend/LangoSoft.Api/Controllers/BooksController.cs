@@ -58,16 +58,24 @@ public class BooksController(AppDbContext db, BookImportService importService, W
             .Select(p => p.Text)
             .ToListAsync();
 
-        var freq = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var wordRx = new Regex(@"[a-zA-ZÀ-öø-ÿ]+", RegexOptions.Compiled);
+        var freq = new Dictionary<string, int>();
+        var wordRx = new Regex(@"\p{L}+", RegexOptions.Compiled);
         foreach (var text in texts)
             foreach (Match m in wordRx.Matches(text))
             {
-                var w = m.Value.ToLowerInvariant();
+                var w = StripDiacritics(m.Value.ToLowerInvariant());
                 freq[w] = freq.GetValueOrDefault(w) + 1;
             }
 
         return Ok(freq);
+    }
+
+    private static string StripDiacritics(string text)
+    {
+        var normalized = text.Normalize(NormalizationForm.FormD);
+        return new string(normalized.Where(c =>
+            System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
+            System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
     }
 
     [HttpPost("import")]
