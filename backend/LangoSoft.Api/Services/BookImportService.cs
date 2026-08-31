@@ -215,6 +215,17 @@ public class BookImportService(AppDbContext db, IHttpClientFactory httpClientFac
         else
             start = 0;
         if (end < 0) end = text.Length;
+
+        // Strip Gutenberg encoding appendix that appears before the end marker
+        // (e.g. "TAVOLA DEI CARATTERI SPECIALI" in the Dante Italian text)
+        var tavola = text.IndexOf("TAVOLA DEI CARATTERI SPECIALI", start, StringComparison.OrdinalIgnoreCase);
+        if (tavola >= 0 && tavola < end)
+        {
+            // Walk back to the preceding blank line / separator row
+            var cutAt = text.LastIndexOf("\n\n", tavola);
+            if (cutAt >= start) end = cutAt;
+        }
+
         return text[start..end];
     }
 

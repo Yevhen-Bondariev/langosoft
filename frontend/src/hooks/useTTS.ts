@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { speakUkrainian, stopUkrainian } from '../lib/espeakUk';
 
 interface SpeakOptions {
   rate?: number;
@@ -12,6 +13,13 @@ interface ChainItem {
   rate?: number;
 }
 
+// Per-language calibration: the Google Italian voice speaks significantly faster
+// than English/Ukrainian at the same rate value, so scale it down to match.
+const LANG_RATE_SCALE: Partial<Record<string, number>> = {
+  it: 0.75,
+  uk: 1.25,
+};
+
 // Pick the best available voice for a language prefix.
 // Prefers Google voices (highest quality, typically female for Romance languages)
 // over system/offline voices which are often lower-quality male.
@@ -24,12 +32,21 @@ function pickVoice(langPrefix: string): SpeechSynthesisVoice | null {
 export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultLang = 'en') {
   const speak = useCallback((text: string, options?: SpeakOptions) => {
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = options?.rate ?? rate;
-    u.pitch = options?.pitch ?? 1;
+    stopUkrainian();
 
     const targetLang = options?.lang ?? defaultLang;
     const langPrefix = targetLang.split('-')[0];
+
+    // Always use eSpeak-NG WASM for Ukrainian — Windows native voices are absent or incorrect.
+    if (langPrefix === 'uk') {
+      void speakUkrainian(text, (options?.rate ?? rate) * (LANG_RATE_SCALE['uk'] ?? 1));
+      return;
+    }
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = (options?.rate ?? rate) * (LANG_RATE_SCALE[langPrefix] ?? 1);
+    u.pitch = options?.pitch ?? 1;
+
     if (langPrefix === 'en' && voice) {
       u.voice = voice; u.lang = voice.lang;
     } else {
@@ -54,9 +71,9 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
       const item = items[index];
       if (!item.text?.trim()) { go(index + 1); return; }
       const u = new SpeechSynthesisUtterance(item.text);
-      u.rate = item.rate ?? rate;
       if (item.lang) {
         const langPrefix = item.lang.split('-')[0];
+        u.rate = (item.rate ?? rate) * (LANG_RATE_SCALE[langPrefix] ?? 1);
         if (langPrefix === 'en' && voice) {
           u.voice = voice; u.lang = voice.lang;
         } else {
@@ -64,10 +81,10 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
           if (match) { u.voice = match; u.lang = match.lang; }
           else u.lang = item.lang;
         }
-      } else if (voice) {
-        u.voice = voice; u.lang = voice.lang;
       } else {
-        u.lang = 'en-GB';
+        u.rate = item.rate ?? rate;
+        if (voice) { u.voice = voice; u.lang = voice.lang; }
+        else u.lang = 'en-GB';
       }
       u.onend = () => go(index + 1);
       u.onerror = () => go(index + 1);
@@ -78,6 +95,7 @@ export function useTTS(voice?: SpeechSynthesisVoice | null, rate = 0.9, defaultL
 
   const stop = useCallback(() => {
     window.speechSynthesis.cancel();
+    stopUkrainian();
   }, []);
 
   const isSpeaking = useCallback(() => window.speechSynthesis.speaking, []);

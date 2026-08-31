@@ -117,6 +117,16 @@ public class ParagraphsController(AppDbContext db, WordService wordService) : Co
         return NoContent();
     }
 
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> DeleteParagraph(int id)
+    {
+        var para = await db.Paragraphs.FindAsync(id);
+        if (para == null) return NotFound();
+        db.Paragraphs.Remove(para);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpPatch("{id:int}/ukrainian")]
     public async Task<IActionResult> SetUkrainianText(int id, [FromBody] string text)
     {

@@ -1428,8 +1428,18 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         goToChapter(chapterNum + 1);
         return;
       }
-      // ── a ── speak Italian original of current verse line
+      // ── a ── speak mnemonic for current word
       if (key === 'a' || key === 'A') {
+        e.preventDefault();
+        const word = wordTokens[currentWordIndex];
+        if (!word) return;
+        const mnemonic = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, '');
+        if (mnemonic) { speak(mnemonic, { lang: 'en' }); announceToNvda(mnemonic); }
+        else speak('No mnemonic available', { lang: 'en' });
+        return;
+      }
+      // ── s ── speak Italian original of current verse line
+      if (key === 's' || key === 'S') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1437,8 +1447,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         if (line) { speak(line); announceToNvda(line); }
         return;
       }
-      // ── s ── speak word-by-word English gloss of current verse line
-      if (key === 's' || key === 'S') {
+      // ── d ── speak word-by-word English gloss of current verse line
+      if (key === 'd' || key === 'D') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1452,8 +1462,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         else speak('No gloss available', { lang: 'en' });
         return;
       }
-      // ── d ── speak Longfellow (literary) translation of current verse line
-      if (key === 'd' || key === 'D') {
+      // ── f ── speak Longfellow (English literary) translation of current verse line
+      if (key === 'f' || key === 'F') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1464,10 +1474,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         else speak('No Longfellow translation for this line', { lang: 'en' });
         return;
       }
-      // ── g ── grammar analysis
+      // ── g ── speak Ukrainian translation of current verse line
       if (key === 'g' || key === 'G') {
         e.preventDefault();
-        analyzeGrammar();
+        const para = paragraphs[currentParagraphIndex];
+        if (!para) return;
+        const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex);
+        const ukLines = para.ukrainianText?.split('\n') ?? [];
+        const ukLine = ukLines[lineIndex]?.trim() ?? '';
+        if (ukLine) { speak(ukLine, { lang: 'uk' }); announceToNvda(ukLine); }
+        else speak('No Ukrainian translation for this line', { lang: 'en' });
         return;
       }
       // ── l ── live literary translation of current line (via API)
@@ -1935,6 +1951,28 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         {statusMsg && <span className="text-amber-400 font-medium ml-auto" aria-live="polite" aria-atomic="true">{statusMsg}</span>}
       </div>
 
+      {/* Inline line toggles */}
+      <div className="flex items-center gap-1.5 px-4 py-1 bg-slate-950 border-b border-slate-800 shrink-0">
+        {([
+          { label: 'Mnemonics', val: showLine0, fn: handleLine0Change, on: 'text-violet-400', off: 'text-slate-600' },
+          { label: 'Italian',   val: showLine1, fn: handleLine1Change, on: 'text-slate-200',  off: 'text-slate-600' },
+          { label: 'Gloss',     val: showLine2, fn: handleLine2Change, on: 'text-sky-400',    off: 'text-slate-600' },
+          { label: 'English',   val: showLine3, fn: handleLine3Change, on: 'text-slate-400',  off: 'text-slate-600' },
+          { label: 'Ukrainian', val: showLine4, fn: handleLine4Change, on: 'text-amber-300',  off: 'text-slate-600' },
+        ] as const).map(({ label, val, fn, on, off }) => (
+          <button
+            key={label}
+            onClick={() => fn(!val)}
+            role="switch"
+            aria-checked={val}
+            aria-label={`Toggle line ${label}`}
+            className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors select-none ${val ? `${on} bg-slate-800` : `${off} bg-transparent`}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Phoneme hint panel */}
       {showPhonemeHints && currentHint && (
         <div className="px-4 py-2 bg-amber-950/40 border-b border-amber-800/50 shrink-0 flex items-center gap-3 text-sm" role="status" aria-live="polite">
@@ -2271,75 +2309,29 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           </div>
         ) : (
           <div role="toolbar" aria-label="Reading shortcuts" className="flex items-center gap-1 flex-wrap">
-            <button
-              aria-label="Stop speech (Ctrl)"
-              aria-keyshortcuts="Control"
-              onClick={() => stop()}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Stop</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">Ctrl</kbd>
-            </button>
-            <button
-              aria-label="Read current line (9)"
-              aria-keyshortcuts="9"
-              onClick={() => readCurrentLine()}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Read line</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">9</kbd>
-            </button>
-            <button
-              aria-label={`Translate current line to ${selectedLang.label} (l)`}
-              aria-keyshortcuts="l"
-              onClick={() => {
-                const para = paragraphs[currentParagraphIndex];
-                if (para) {
-                  const line = lineAtWord(para.text, currentWordIndex);
-                  if (line) api.words.translateParagraph(line, selectedLang.name, book.language, false).then(r => { speak(r.translation, { lang: selectedLang.code }); announceToNvda(r.translation); }).catch(() => {});
-                }
-              }}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Translate</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">l</kbd>
-            </button>
-            <button
-              aria-label="Enter recall mode (r)"
-              aria-keyshortcuts="r"
-              onClick={() => enterRecall()}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Recall</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">r</kbd>
-            </button>
-            <button
-              aria-label="Add flashcard (0)"
-              aria-keyshortcuts="0"
-              onClick={() => openAddFlashcard()}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Flashcard</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">0</kbd>
-            </button>
-            <button
-              aria-label="Grammar analysis (g)"
-              aria-keyshortcuts="g"
-              onClick={() => analyzeGrammar()}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Grammar</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">g</kbd>
-            </button>
-            <button
-              aria-label="Keyboard reference (h)"
-              aria-keyshortcuts="h"
-              onClick={() => setShowKeyboardRef(true)}
-              className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
-            >
-              <span className="text-[10px] leading-none mb-0.5">Help</span>
-              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">h</kbd>
-            </button>
+            {([
+              { label: 'Stop',      key: 'Ctrl', ariaKey: 'Control', onClick: () => stop() },
+              { label: 'Word',      key: '5',    ariaKey: '5',       onClick: () => { const t = wordTokens[currentWordIndex]; if (!t) return; const w = t.rawWord || t.text; const tr = resolveGloss(w, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current); if (book.language !== 'en' && tr) { speakChain([{ text: w, lang: book.language }, { text: tr, lang: 'en' }]); } else { speak(w); } } },
+              { label: 'Line',      key: '8',    ariaKey: '8',       onClick: () => readCurrentLine() },
+              { label: 'Mnemonic',  key: 'a',    ariaKey: 'a',       onClick: () => { const word = wordTokens[currentWordIndex]; if (!word) return; const m = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, ''); speak(m || 'No mnemonic', { lang: 'en' }); } },
+              { label: 'Italian',   key: 's',    ariaKey: 's',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (line) speak(line); } },
+              { label: 'Gloss',     key: 'd',    ariaKey: 'd',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (!line) return; const pm = glossWordCache.current.get(`${currentParagraphIndex}::en`); const words = Array.from(line.matchAll(/[\p{L}'‘’ʼ`\-]+/gu)).map(m2 => m2[0]); const parts = words.map(w => resolveGloss(w, pm, staticGlossRef.current)).filter(Boolean); speak(parts.join(' ') || 'No gloss', { lang: 'en' }); } },
+              { label: 'English',   key: 'f',    ariaKey: 'f',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const lf = (para.longfellowText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(lf || 'No Longfellow', { lang: 'en' }); } },
+              { label: 'Ukrainian', key: 'g',    ariaKey: 'g',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const uk = (para.ukrainianText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(uk || 'No Ukrainian', { lang: 'uk' }); } },
+              { label: 'Flashcard', key: '0',    ariaKey: '0',       onClick: () => openAddFlashcard() },
+              { label: 'Help',      key: 'h',    ariaKey: 'h',       onClick: () => setShowKeyboardRef(true) },
+            ] as { label: string; key: string; ariaKey: string; onClick: () => void }[]).map(({ label, key, ariaKey, onClick }) => (
+              <button
+                key={key}
+                aria-label={`${label} (${ariaKey})`}
+                aria-keyshortcuts={ariaKey}
+                onClick={onClick}
+                className="flex flex-col items-center px-2 py-1.5 rounded hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-amber-500"
+              >
+                <span className="text-[10px] leading-none mb-0.5">{label}</span>
+                <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">{key}</kbd>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -2416,26 +2408,25 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   ] as [string, string][],
                 },
                 {
-                  title: 'Translation Lines (current verse line)',
+                  title: 'Narration — current verse line',
                   rows: [
-                    ['a', 'Italian original'],
-                    ['s', 'Word-by-word English gloss'],
-                    ['d', 'Longfellow literary translation'],
+                    ['a', 'Mnemonic for current word'],
+                    ['s', 'Italian original'],
+                    ['d', 'Word-by-word English gloss'],
+                    ['f', 'Longfellow literary translation'],
+                    ['g', 'Ukrainian translation'],
                   ] as [string, string][],
                 },
                 {
                   title: 'Study Tools',
                   rows: [
-                    ['→  or  r', 'Enter recall / input mode'],
+                    ['→', 'Enter recall / input mode'],
                     ['0', 'Add current word to flashcards (double-click a word also works)'],
-                    ['g', 'Grammar analysis of current line'],
-                    ['l', `Live ${selectedLang.label} translation of current line (via API)`],
                   ] as [string, string][],
                 },
                 {
                   title: 'Speed & Speech',
                   rows: [
-                    ['s', 'Snap speed between 1.0× and 1.5×'],
                     ['↑  /  ↓', 'Adjust speed by ±0.1× (current: ' + ttsRate.toFixed(1) + '×)'],
                     ['Ctrl', 'Stop speech immediately — works everywhere, even while typing'],
                   ] as [string, string][],
