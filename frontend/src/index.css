@@ -138,3 +138,86 @@ body {
 .mobile-action-bar {
   padding-bottom: max(env(safe-area-inset-bottom), 8px);
 }
+
+/* ── Medium theme (slate palette shifted 2 steps lighter, still dark) ─────── */
+[data-theme="medium"] body {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+[data-theme="medium"] ::-webkit-scrollbar-thumb { background: #64748b; }
+[data-theme="medium"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+[data-theme="medium"] .glass-card { background: rgba(71, 85, 105, 0.7); }
+[data-theme="medium"] .bg-slate-950 { background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .bg-slate-900 { background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .bg-slate-800 { background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .bg-slate-700 { background-color: rgb(100 116 139 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .bg-slate-600 { background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .border-slate-800 { border-color: rgb(71 85 105 / var(--tw-border-opacity, 1)); }
+[data-theme="medium"] .border-slate-700 { border-color: rgb(100 116 139 / var(--tw-border-opacity, 1)); }
+[data-theme="medium"] .border-slate-600 { border-color: rgb(148 163 184 / var(--tw-border-opacity, 1)); }
+[data-theme="medium"] .hover\:bg-slate-900:hover { background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .hover\:bg-slate-800:hover { background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .hover\:bg-slate-700:hover { background-color: rgb(100 116 139 / var(--tw-bg-opacity, 1)); }
+[data-theme="medium"] .hover\:bg-slate-600:hover { background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1)); }
+/* Text — shift 2 steps lighter to match background shift, else muted text drops below 2:1 */
+[data-theme="medium"] .text-slate-400 { color: rgb(226 232 240); }
+[data-theme="medium"] .text-slate-500 { color: rgb(203 213 225); }
+[data-theme="medium"] .text-slate-600 { color: rgb(148 163 184); }
+/* Hover text — boost for contrast on lighter medium-theme backgrounds */
+[data-theme="medium"] .hover\:text-slate-200:hover { color: rgb(248 250 252); }
+[data-theme="medium"] .hover\:text-slate-300:hover { color: rgb(226 232 240); }
+[data-theme="medium"] .hover\:text-slate-400:hover { color: rgb(203 213 225); }
+/* Danger button: red-400 text on shifted darker bg drops to ~3.3:1; red-300 restores ~4.8:1 */
+[data-theme="medium"] .text-red-400 { color: rgb(252 165 165); }
+
+/* ── Light theme ──────────────────────────────────────────────────────────── */
+[data-theme="light"] body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #94a3b8; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+[data-theme="light"] .glass-card {
+  background: rgba(241, 245, 249, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+}
+/* Backgrounds */
+[data-theme="light"] .bg-slate-950 { background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .bg-slate-900 { background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .bg-slate-800 { background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .bg-slate-700 { background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .bg-slate-600 { background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1)); }
+/* Text — light values become dark on white bg */
+[data-theme="light"] .text-slate-100 { color: rgb(15 23 42 / var(--tw-text-opacity, 1)); }
+[data-theme="light"] .text-slate-200 { color: rgb(30 41 59 / var(--tw-text-opacity, 1)); }
+[data-theme="light"] .text-slate-300 { color: rgb(51 65 85 / var(--tw-text-opacity, 1)); }
+[data-theme="light"] .text-slate-400 { color: rgb(71 85 105 / var(--tw-text-opacity, 1)); }
+[data-theme="light"] .text-slate-500 { color: rgb(100 116 139 / var(--tw-text-opacity, 1)); }
+/* Borders */
+[data-theme="light"] .border-slate-800 { border-color: rgb(226 232 240 / var(--tw-border-opacity, 1)); }
+[data-theme="light"] .border-slate-700 { border-color: rgb(203 213 225 / var(--tw-border-opacity, 1)); }
+[data-theme="light"] .border-slate-600 { border-color: rgb(148 163 184 / var(--tw-border-opacity, 1)); }
+/* Hover backgrounds */
+[data-theme="light"] .hover\:bg-slate-900:hover { background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .hover\:bg-slate-800:hover { background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .hover\:bg-slate-700:hover { background-color: rgb(203 213 225 / var(--tw-bg-opacity, 1)); }
+[data-theme="light"] .hover\:bg-slate-600:hover { background-color: rgb(148 163 184 / var(--tw-bg-opacity, 1)); }
+/* Hover text — without override these stay near-white, invisible on light backgrounds */
+[data-theme="light"] .hover\:text-slate-100:hover { color: rgb(15 23 42); }
+[data-theme="light"] .hover\:text-slate-200:hover { color: rgb(30 41 59); }
+[data-theme="light"] .hover\:text-slate-300:hover { color: rgb(51 65 85); }
+[data-theme="light"] .hover\:text-slate-400:hover { color: rgb(71 85 105); }
+/* Content line colors — saturated but too pale for white bg */
+[data-theme="light"] .text-violet-300 { color: rgb(109 40 217); }
+[data-theme="light"] .text-violet-400 { color: rgb(124 58 237); }
+[data-theme="light"] .text-sky-400    { color: rgb(2 132 199); }
+[data-theme="light"] .text-amber-300  { color: rgb(180 83 9); }
+[data-theme="light"] .text-amber-400  { color: rgb(180 83 9); }
+/* amber-500 (#f59e0b) is bright yellow — ~2:1 on white, invisible; map to amber-800 */
+[data-theme="light"] .text-amber-500  { color: rgb(146 64 14); }
+/* Danger button: red-400 text blends with red-900/40 overlay on light bg → ~1:1 invisible.
+   Switch to dark red text + thin overlay so dark text has a light-tinted background. */
+[data-theme="light"] .text-red-400    { color: rgb(127 29 29); }
+[data-theme="light"] .bg-red-900\/40  { background-color: rgb(127 29 29 / 0.1); }
+[data-theme="light"] .hover\:bg-red-900\/60:hover { background-color: rgb(127 29 29 / 0.18); }
+[data-theme="light"] .border-red-800\/50 { border-color: rgb(153 27 27 / 0.4); }

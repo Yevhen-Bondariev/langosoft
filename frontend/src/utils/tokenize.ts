@@ -33,6 +33,18 @@ export function tokenizeParagraph(text: string): WordToken[] {
     }
   }
 
+  // Attach trailing punctuation from each space token to the preceding word's display text.
+  // rawWord is left clean for TTS / dictionary / flashcard lookups.
+  // Example: ["vita", ",\n  ", "mi"] → [{text:"vita,", rawWord:"vita"}, space, {text:"mi"…}]
+  for (let i = 1; i < tokens.length; i++) {
+    const prev = tokens[i - 1];
+    const curr = tokens[i];
+    if (prev.type === 'word' && curr.type === 'space') {
+      const punct = curr.text.replace(/\s/g, '');
+      if (punct) prev.text += punct;
+    }
+  }
+
   return tokens;
 }
 

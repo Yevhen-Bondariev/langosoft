@@ -204,6 +204,8 @@ interface SettingsModalProps {
   showLine2: boolean; onLine2Change: (v: boolean) => void;
   showLine3: boolean; onLine3Change: (v: boolean) => void;
   showLine4: boolean; onLine4Change: (v: boolean) => void;
+  theme?: string;
+  onThemeChange?: (t: string) => void;
   onClose: () => void;
 }
 
@@ -215,20 +217,22 @@ const SettingsModal = memo(function SettingsModal({
   vocabTotal, vocabCount, onVocabReset,
   showLine0, onLine0Change, showLine1, onLine1Change, showLine2, onLine2Change,
   showLine3, onLine3Change, showLine4, onLine4Change,
+  theme, onThemeChange,
   onClose,
 }: SettingsModalProps) {
   const [tab, setTab] = useState('frequency');
 
   const TABS = [
-    { id: 'frequency', label: 'Frequency' },
-    { id: 'phonemes',  label: 'Phonemes', disabled: true },
-    { id: 'languages', label: 'Languages' },
-    { id: 'narration', label: 'Narration' },
-    { id: 'display',   label: 'Display' },
-    { id: 'howto',     label: 'How to use' },
+    { id: 'frequency',  label: 'Frequency' },
+    { id: 'phonemes',   label: 'Phonemes', disabled: true },
+    { id: 'languages',  label: 'Languages' },
+    { id: 'narration',  label: 'Narration' },
+    { id: 'display',    label: 'Display' },
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'howto',      label: 'How to use' },
   ];
 
-  const tabLabels: Record<string, string> = { frequency: 'Frequency', phonemes: 'Phonemes', languages: 'Languages', narration: 'Narration', display: 'Display', howto: 'How to use' };
+  const tabLabels: Record<string, string> = { frequency: 'Frequency', phonemes: 'Phonemes', languages: 'Languages', narration: 'Narration', display: 'Display', appearance: 'Appearance', howto: 'How to use' };
 
   return (
     <div
@@ -356,11 +360,11 @@ const SettingsModal = memo(function SettingsModal({
             <div className="space-y-4">
               <p className="text-xs text-slate-500 mb-4">Toggle which lines appear in each verse stanza.</p>
               {[
-                { n: 0, label: 'Mnemonic stories',       val: showLine0, onChange: onLine0Change },
                 { n: 1, label: 'Italian original',       val: showLine1, onChange: onLine1Change },
                 { n: 2, label: 'Word-by-word gloss',     val: showLine2, onChange: onLine2Change },
                 { n: 3, label: 'Longfellow translation', val: showLine3, onChange: onLine3Change },
                 { n: 4, label: 'Ukrainian translation',  val: showLine4, onChange: onLine4Change },
+                { n: 0, label: 'Mnemonic stories',       val: showLine0, onChange: onLine0Change },
               ].map(({ n, label, val, onChange }) => (
                 <div key={n} className="flex items-center justify-between">
                   <span className="text-sm text-slate-300">{label}</span>
@@ -373,6 +377,31 @@ const SettingsModal = memo(function SettingsModal({
                     <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${val ? 'left-[18px]' : 'left-0.5'}`} />
                   </button>
                 </div>
+              ))}
+            </div>
+          )}
+
+          {/* Appearance */}
+          {tab === 'appearance' && (
+            <div className="space-y-1">
+              <p className="text-xs text-slate-500 mb-3">Choose a color scheme for the interface.</p>
+              {([
+                { id: 'dark',   label: 'Dark',   desc: 'Near-black — best in low light' },
+                { id: 'medium', label: 'Medium', desc: 'Slate gray — comfortable all day' },
+                { id: 'light',  label: 'Light',  desc: 'White — best in bright light' },
+              ] as const).map(({ id, label, desc }) => (
+                <button
+                  key={id}
+                  onClick={() => onThemeChange?.(id)}
+                  className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors ${
+                    theme === id
+                      ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30'
+                      : 'text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-transparent'
+                  }`}
+                >
+                  <span className="font-semibold block">{label}</span>
+                  <span className="text-xs text-slate-500">{desc}</span>
+                </button>
               ))}
             </div>
           )}
@@ -427,6 +456,8 @@ interface Props {
   languages?: LanguageOption[];
   onLangChange?: (code: string) => void;
   onPhonemeToggle?: () => void;
+  theme?: string;
+  onThemeChange?: (t: string) => void;
 }
 
 interface AddFlashcardState {
@@ -437,7 +468,7 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -1428,18 +1459,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         goToChapter(chapterNum + 1);
         return;
       }
-      // ── a ── speak mnemonic for current word
+      // ── a ── speak Italian original of current verse line
       if (key === 'a' || key === 'A') {
-        e.preventDefault();
-        const word = wordTokens[currentWordIndex];
-        if (!word) return;
-        const mnemonic = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, '');
-        if (mnemonic) { speak(mnemonic, { lang: 'en' }); announceToNvda(mnemonic); }
-        else speak('No mnemonic available', { lang: 'en' });
-        return;
-      }
-      // ── s ── speak Italian original of current verse line
-      if (key === 's' || key === 'S') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1447,8 +1468,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         if (line) { speak(line); announceToNvda(line); }
         return;
       }
-      // ── d ── speak word-by-word English gloss of current verse line
-      if (key === 'd' || key === 'D') {
+      // ── s ── speak word-by-word English gloss of current verse line
+      if (key === 's' || key === 'S') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1462,8 +1483,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         else speak('No gloss available', { lang: 'en' });
         return;
       }
-      // ── f ── speak Longfellow (English literary) translation of current verse line
-      if (key === 'f' || key === 'F') {
+      // ── d ── speak Longfellow (English literary) translation of current verse line
+      if (key === 'd' || key === 'D') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1474,8 +1495,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         else speak('No Longfellow translation for this line', { lang: 'en' });
         return;
       }
-      // ── g ── speak Ukrainian translation of current verse line
-      if (key === 'g' || key === 'G') {
+      // ── f ── speak Ukrainian translation of current verse line
+      if (key === 'f' || key === 'F') {
         e.preventDefault();
         const para = paragraphs[currentParagraphIndex];
         if (!para) return;
@@ -1484,6 +1505,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         const ukLine = ukLines[lineIndex]?.trim() ?? '';
         if (ukLine) { speak(ukLine, { lang: 'uk' }); announceToNvda(ukLine); }
         else speak('No Ukrainian translation for this line', { lang: 'en' });
+        return;
+      }
+      // ── g ── speak mnemonic for current word
+      if (key === 'g' || key === 'G') {
+        e.preventDefault();
+        const word = wordTokens[currentWordIndex];
+        if (!word) return;
+        const mnemonic = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, '');
+        if (mnemonic) { speak(mnemonic, { lang: 'en' }); announceToNvda(mnemonic); }
+        else speak('No mnemonic available', { lang: 'en' });
         return;
       }
       // ── l ── live literary translation of current line (via API)
@@ -1690,7 +1721,37 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
             const ukLine = ukrainianLines[li]?.trim() ?? '';
             return (
               <div key={li} className={li > 0 ? 'mt-3' : ''}>
-                {/* Line 0 — mnemonic story for the active word only */}
+                {/* Each word paired with its gloss in one column */}
+                {(showLine1 || (showLine2 && hasGloss)) && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-0">
+                    {wordItems.map(({ token, origTi }) => {
+                      const eng = hasGloss ? lookupEng(token.rawWord) : '';
+                      return (
+                        <div key={origTi} className="inline-flex flex-col items-start">
+                          {showLine1 && renderWordSpan(token, origTi)}
+                          {showLine2 && hasGloss && (
+                            <span className="text-sky-400 font-mono text-sm leading-tight">
+                              {eng || '·'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Longfellow — 2nd line */}
+                {showLine3 && lfLine && (
+                  <div className="font-mono text-base leading-snug text-slate-400 italic">
+                    {lfLine}
+                  </div>
+                )}
+                {/* Ukrainian — 3rd line */}
+                {showLine4 && ukLine && (
+                  <div className="font-mono text-base leading-snug text-amber-300 italic">
+                    {ukLine}
+                  </div>
+                )}
+                {/* Mnemonic — 5th line, active word only */}
                 {showLine0 && isCurrent && (() => {
                   const PART_EXPAND: Record<string, string> = {
                     ch: "che", m: "mi", v: "vi", t: "ti", d: "di",
@@ -1725,7 +1786,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   }
 
                   // Contraction lookup — split on apostrophe, resolve each part
-                  const rawParts = lower.split(/[‘‘’ʼ`]/).filter(p => p.length > 0);
+                  const rawParts = lower.split(/['‘’ʼ`]/).filter(p => p.length > 0);
                   if (rawParts.length < 2) return null;
                   const resolved = rawParts.map(p => ({ part: p, form: PART_EXPAND[p] ?? p }));
                   const entries = resolved
@@ -1754,36 +1815,6 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                     </div>
                   );
                 })()}
-                {/* Each word paired with its gloss in one column */}
-                {(showLine1 || (showLine2 && hasGloss)) && (
-                  <div className="flex flex-wrap gap-x-3 gap-y-0">
-                    {wordItems.map(({ token, origTi }) => {
-                      const eng = hasGloss ? lookupEng(token.rawWord) : '';
-                      return (
-                        <div key={origTi} className="inline-flex flex-col items-start">
-                          {showLine1 && renderWordSpan(token, origTi)}
-                          {showLine2 && hasGloss && (
-                            <span className="text-sky-400 font-mono text-sm leading-tight">
-                              {eng || '·'}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* Longfellow — 3rd line */}
-                {showLine3 && lfLine && (
-                  <div className="font-mono text-base leading-snug text-slate-400 italic">
-                    {lfLine}
-                  </div>
-                )}
-                {/* Ukrainian — 4th line */}
-                {showLine4 && ukLine && (
-                  <div className="font-mono text-base leading-snug text-amber-300 italic">
-                    {ukLine}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -2313,11 +2344,11 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
               { label: 'Stop',      key: 'Ctrl', ariaKey: 'Control', onClick: () => stop() },
               { label: 'Word',      key: '5',    ariaKey: '5',       onClick: () => { const t = wordTokens[currentWordIndex]; if (!t) return; const w = t.rawWord || t.text; const tr = resolveGloss(w, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current); if (book.language !== 'en' && tr) { speakChain([{ text: w, lang: book.language }, { text: tr, lang: 'en' }]); } else { speak(w); } } },
               { label: 'Line',      key: '8',    ariaKey: '8',       onClick: () => readCurrentLine() },
-              { label: 'Mnemonic',  key: 'a',    ariaKey: 'a',       onClick: () => { const word = wordTokens[currentWordIndex]; if (!word) return; const m = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, ''); speak(m || 'No mnemonic', { lang: 'en' }); } },
-              { label: 'Italian',   key: 's',    ariaKey: 's',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (line) speak(line); } },
-              { label: 'Gloss',     key: 'd',    ariaKey: 'd',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (!line) return; const pm = glossWordCache.current.get(`${currentParagraphIndex}::en`); const words = Array.from(line.matchAll(/[\p{L}'‘’ʼ`\-]+/gu)).map(m2 => m2[0]); const parts = words.map(w => resolveGloss(w, pm, staticGlossRef.current)).filter(Boolean); speak(parts.join(' ') || 'No gloss', { lang: 'en' }); } },
-              { label: 'English',   key: 'f',    ariaKey: 'f',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const lf = (para.longfellowText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(lf || 'No Longfellow', { lang: 'en' }); } },
-              { label: 'Ukrainian', key: 'g',    ariaKey: 'g',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const uk = (para.ukrainianText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(uk || 'No Ukrainian', { lang: 'uk' }); } },
+              { label: 'Italian',   key: 'a',    ariaKey: 'a',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (line) speak(line); } },
+              { label: 'Gloss',     key: 's',    ariaKey: 's',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const line = lineAtWord(para.text, currentWordIndex); if (!line) return; const pm = glossWordCache.current.get(`${currentParagraphIndex}::en`); const words = Array.from(line.matchAll(/[\p{L}'‘’ʼ`\-]+/gu)).map(m2 => m2[0]); const parts = words.map(w => resolveGloss(w, pm, staticGlossRef.current)).filter(Boolean); speak(parts.join(' ') || 'No gloss', { lang: 'en' }); } },
+              { label: 'English',   key: 'd',    ariaKey: 'd',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const lf = (para.longfellowText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(lf || 'No Longfellow', { lang: 'en' }); } },
+              { label: 'Ukrainian', key: 'f',    ariaKey: 'f',       onClick: () => { const para = paragraphs[currentParagraphIndex]; if (!para) return; const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex); const uk = (para.ukrainianText?.split('\n') ?? [])[lineIndex]?.trim() ?? ''; speak(uk || 'No Ukrainian', { lang: 'uk' }); } },
+              { label: 'Mnemonic',  key: 'g',    ariaKey: 'g',       onClick: () => { const word = wordTokens[currentWordIndex]; if (!word) return; const m = mnemonics[word.rawWord.toLowerCase()]?.replace(/^\([^)]+\)\s*/, ''); speak(m || 'No mnemonic', { lang: 'en' }); } },
               { label: 'Flashcard', key: '0',    ariaKey: '0',       onClick: () => openAddFlashcard() },
               { label: 'Help',      key: 'h',    ariaKey: 'h',       onClick: () => setShowKeyboardRef(true) },
             ] as { label: string; key: string; ariaKey: string; onClick: () => void }[]).map(({ label, key, ariaKey, onClick }) => (
@@ -2359,6 +2390,8 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           showLine2={showLine2} onLine2Change={handleLine2Change}
           showLine3={showLine3} onLine3Change={handleLine3Change}
           showLine4={showLine4} onLine4Change={handleLine4Change}
+          theme={theme}
+          onThemeChange={onThemeChange}
           onClose={handleCloseSettings}
         />
       )}
@@ -2410,11 +2443,11 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 {
                   title: 'Narration — current verse line',
                   rows: [
-                    ['a', 'Mnemonic for current word'],
-                    ['s', 'Italian original'],
-                    ['d', 'Word-by-word English gloss'],
-                    ['f', 'Longfellow literary translation'],
-                    ['g', 'Ukrainian translation'],
+                    ['a', 'Italian original'],
+                    ['s', 'Word-by-word English gloss'],
+                    ['d', 'Longfellow literary translation'],
+                    ['f', 'Ukrainian translation'],
+                    ['g', 'Mnemonic for current word'],
                   ] as [string, string][],
                 },
                 {

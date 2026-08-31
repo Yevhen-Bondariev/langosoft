@@ -24,6 +24,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showPhonemeHints, setShowPhonemeHints] = useState(false);
   const [ttsRate, setTtsRate] = useState(() => parseFloat(localStorage.getItem('tts-rate') ?? '0.9'));
+  const [theme, setTheme] = useState(() => localStorage.getItem('langosoft-theme') ?? 'dark');
   const { voices, selectedVoice, selectedVoiceName, setVoice } = useVoicePreference();
   const { languages, selectedLang, setLanguage } = useLanguagePreference();
   const isMobile = useIsMobile();
@@ -32,6 +33,11 @@ export default function App() {
   useEffect(() => {
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('langosoft-theme', theme);
+  }, [theme]);
 
   const changeRate = useCallback((delta: number) => {
     setTtsRate(prev => {
@@ -337,6 +343,8 @@ export default function App() {
             languages={languages}
             onLangChange={setLanguage}
             onPhonemeToggle={() => setShowPhonemeHints(v => !v)}
+            theme={theme}
+            onThemeChange={setTheme}
           />
         )}
         {view === 'flashcards' && (
