@@ -1,0 +1,224 @@
+{
+  "-en": {
+    "ben": "well, truly (short for bene)",
+    "cen": "us from there (ce ne contracted)",
+    "men": "less (short for meno)",
+    "ren": "kidneys, loins (archaic singular of reni)",
+    "sen": "away, off (se ne contracted, as in sen va = goes away)",
+    "ten": "thee away (te ne contracted, as in ten porta = carries you away)",
+    "ven": "comes (short for viene), or vein (short for vena)"
+  },
+  "-el": {
+    "bel": "beautiful (short for bello)",
+    "del": "of the (di + il contracted)",
+    "nel": "in the (in + il contracted)",
+    "pel": "for the (per + il contracted); also skin, hide, fur (short for pelle)"
+  },
+  "-asso": {
+    "basso": "low, deep; bass (adjective/adverb)",
+    "casso": "annulled, void, struck out (archaic, from cassare)",
+    "lasso": "weary; alas (archaic adjective and exclamation)",
+    "passo": "step, pace; I pass (noun or 1st person present of passare)",
+    "sasso": "stone, rock"
+  },
+  "-olle": {
+    "bolle": "bubbles; seals (plural of bolla); it boils (3rd person of bollire)",
+    "colle": "hill; with the (col + le contracted)",
+    "folle": "mad, foolish (adjective)",
+    "molle": "soft, weak (adjective plural); springs (plural of molla)",
+    "tolle": "took away, removed (archaic 3rd person past of togliere)",
+    "volle": "wanted, willed (3rd person past absolute of volere)"
+  },
+  "-era": {
+    "cera": "wax; look, appearance (archaic: far buona cera = to look well)",
+    "fera": "wild beast (archaic/poetic noun, from Latin fera); fierce (adjective)",
+    "nera": "black (feminine adjective)",
+    "sera": "evening",
+    "vera": "true, real (feminine adjective)"
+  },
+  "-ace": {
+    "face": "torch; does, makes (archaic 3rd person of fare)",
+    "pace": "peace",
+    "tace": "is silent, keeps quiet (3rd person of tacere)"
+  },
+  "-aggio": {
+    "maggio": "May (the month)",
+    "raggio": "ray (of light); spoke (of a wheel)",
+    "saggio": "wise; sage; essay (noun/adjective)"
+  },
+  "-agione": {
+    "cagione": "cause, reason (archaic)",
+    "ragione": "reason; right; account"
+  },
+  "-alle": {
+    "calle": "narrow lane, path (archaic/Venetian)",
+    "valle": "valley"
+  },
+  "-ame": {
+    "fame": "hunger; fame, renown",
+    "rame": "copper; wire (archaic)"
+  },
+  "-ardi": {
+    "sardi": "Sardinians (plural)",
+    "tardi": "late; tardily"
+  },
+  "-egge": {
+    "legge": "law; reads (3rd person of leggere)",
+    "regge": "rules, governs; holds up (3rd person of reggere)"
+  },
+  "-eggio": {
+    "deggio": "I ought, I must (archaic for debbo/devo)",
+    "peggio": "worse; the worse",
+    "seggio": "seat, throne",
+    "veggio": "I see (archaic for vedo)"
+  },
+  "-egna": {
+    "degna": "worthy, dignified (feminine)",
+    "regna": "reigns, rules (3rd person of regnare)",
+    "tegna": "may hold (archaic subjunctive of tenere)",
+    "vegna": "may come (archaic subjunctive of venire)"
+  },
+  "-elle": {
+    "belle": "beautiful (feminine plural)",
+    "pelle": "skin, hide, leather"
+  },
+  "-eltro": {
+    "feltro": "felt (the fabric)",
+    "peltro": "pewter",
+    "veltro": "greyhound (the prophesied saviour in Canto I)"
+  },
+  "-enti": {
+    "denti": "teeth",
+    "genti": "peoples, folk, races",
+    "lenti": "slow (plural); lentils",
+    "menti": "minds; you lie (2nd person of mentire)",
+    "senti": "you hear/feel; listen! (imperative of sentire)",
+    "venti": "winds (plural of vento); twenty"
+  },
+  "-erto": {
+    "certo": "certain, sure; certainly",
+    "merto": "merit, desert (archaic for merito)"
+  },
+  "-esse": {
+    "desse": "he/she gave (archaic imperfect subjunctive of dare)",
+    "fesse": "split, cracked (archaic past subjunctive of fendere)"
+  },
+  "-esti": {
+    "desti": "you gave (2nd person past of dare); you woke (of destare)",
+    "mesti": "sad, sorrowful (masculine plural)"
+  },
+  "-ia": {
+    "aia": "threshing floor; wren (bird)",
+    "fia": "will be; may be (archaic future/subjunctive of essere)",
+    "gia": "already (archaic/poetic form of già)",
+    "mia": "my (feminine)",
+    "pia": "pious, devout (feminine)",
+    "ria": "wicked, evil (archaic feminine); rivulet, stream",
+    "sia": "may be; let it be; either…or (archaic)",
+    "via": "way, road; away; via"
+  },
+  "-ide": {
+    "fide": "faithful, trusting (plural adjective)",
+    "vide": "saw (archaic/Latin 3rd person past of vedere)"
+  },
+  "-ieta": {
+    "lieta": "happy, joyful (feminine)",
+    "pieta": "pity, compassion; Pietà",
+    "vieta": "forbids; outmoded, stale (3rd person of vietare)"
+  },
+  "-ietro": {
+    "dietro": "behind, back, after",
+    "pietro": "Peter (name); stone (archaic, from Latin Petrus)",
+    "rietro": "back, behind (archaic variant of dietro)"
+  },
+  "-ioco": {
+    "fioco": "faint, dim, weak (of voice or light)",
+    "gioco": "game, play"
+  },
+  "-ita": {
+    "dita": "fingers",
+    "gita": "excursion, trip, outing",
+    "vita": "life",
+    "zita": "young woman (archaic/dialectal)"
+  },
+  "-iva": {
+    "giva": "was going (archaic imperfect of gire = andare)",
+    "riva": "shore, bank (of river or sea)",
+    "viva": "long live!; alive (feminine)"
+  },
+  "-iù": {
+    "giù": "down, below",
+    "più": "more; most; no longer"
+  },
+  "-oco": {
+    "foco": "fire (poetic/archaic variant of fuoco)",
+    "loco": "place (archaic/poetic for luogo)",
+    "poco": "little, few; a little"
+  },
+  "-oglia": {
+    "doglia": "pain, grief, anguish",
+    "soglia": "threshold, doorstep",
+    "voglia": "desire, wish; will"
+  },
+  "-olsi": {
+    "colsi": "I gathered, picked (past of cogliere)",
+    "dolsi": "I grieved, ached (past of dolere)",
+    "polsi": "wrists; pulses (plural of polso)",
+    "tolsi": "I took away, removed (past of togliere)",
+    "volsi": "I turned (past of volgere)"
+  },
+  "-olto": {
+    "colto": "gathered; cultured, educated",
+    "folto": "dense, thick (of foliage or crowds)",
+    "molto": "much, very, many",
+    "tolto": "taken away, removed (past participle of togliere)",
+    "volto": "face, countenance; turned (past participle of volgere)"
+  },
+  "-onte": {
+    "conte": "count (title of nobility)",
+    "fonte": "source, spring, fountain",
+    "monte": "mountain, mount",
+    "ponte": "bridge"
+  },
+  "-orte": {
+    "corte": "court (royal or legal)",
+    "forte": "strong; strongly; fortress",
+    "morte": "death",
+    "porte": "doors, gates (plural of porta)",
+    "sorte": "fate, lot, destiny"
+  },
+  "-rame": {
+    "brame": "longings, cravings (plural of brama)",
+    "grame": "wretched, miserable (feminine plural of gramo)"
+  },
+  "-rida": {
+    "arida": "arid, dry (feminine)",
+    "grida": "shouts, cries; shouts (3rd person of gridare)"
+  },
+  "-roia": {
+    "croia": "tough, rough; dull-witted (archaic adjective)",
+    "troia": "Troy (the city)"
+  },
+  "-ronte": {
+    "fronte": "forehead; front, face",
+    "pronte": "ready, prompt (feminine plural)"
+  },
+  "-ui": {
+    "bui": "dark, gloomy (plural); shadows",
+    "cui": "whom, which, whose (relative pronoun)",
+    "fui": "I was (past of essere)",
+    "lui": "him, he",
+    "qui": "here",
+    "rui": "streams, rivulets (archaic plural of rivo)",
+    "sui": "on the, on one's (su + i)",
+    "tui": "of thee, thine (archaic genitive of tu)"
+  },
+  "-ura": {
+    "aura": "breeze; aura, halo",
+    "cura": "care, cure; worry",
+    "dura": "hard (feminine); lasts, endures (3rd person of durare)",
+    "mura": "walls (of a city)",
+    "pura": "pure, clean (feminine)",
+    "tura": "plugs, blocks (3rd person of turare)"
+  }
+}

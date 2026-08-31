@@ -20,3 +20,6 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# Claude Code local memory / plans
+.claude/
