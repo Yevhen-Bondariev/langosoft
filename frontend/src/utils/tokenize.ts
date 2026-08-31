@@ -2,8 +2,8 @@ import type { WordToken } from '../types';
 
 // Apostrophe variants found in literary texts:
 //   U+0027 straight apostrophe  '
-//   U+2018 left  single quote   '
-//   U+2019 right single quote   ' (used as apostrophe in most Project Gutenberg Italian texts)
+//   U+2018 left  single quote   ‘
+//   U+2019 right single quote   ’ (used as apostrophe in most Project Gutenberg Italian texts)
 const APOS = "'‘’";
 const wordRe   = new RegExp(`([\\p{L}${APOS}\\-]+)|([^\\p{L}${APOS}\\-]+)`, 'gu');
 const stripRe  = new RegExp(`^[${APOS}\\-]+|[${APOS}\\-]+$`, 'gu');
@@ -33,15 +33,36 @@ export function tokenizeParagraph(text: string): WordToken[] {
     }
   }
 
-  // Attach trailing punctuation from each space token to the preceding word's display text.
-  // rawWord is left clean for TTS / dictionary / flashcard lookups.
-  // Example: ["vita", ",\n  ", "mi"] → [{text:"vita,", rawWord:"vita"}, space, {text:"mi"…}]
-  for (let i = 1; i < tokens.length; i++) {
-    const prev = tokens[i - 1];
+  // Partition non-whitespace chars in each space token:
+  //   opening punctuation (« ‹ “ ‘ ( [ {) -> prepend to the next word
+  //   everything else (,.:;!? » › ) ] })             -> append to the previous word
+  // Each character is classified independently so mixed cases like ':«' work correctly.
+  const OPENING = new Set(['«', '‹', '“', '‘', '(', '[', '{']);
+
+  for (let i = 0; i < tokens.length; i++) {
     const curr = tokens[i];
-    if (prev.type === 'word' && curr.type === 'space') {
-      const punct = curr.text.replace(/\s/g, '');
-      if (punct) prev.text += punct;
+    if (curr.type !== 'space') continue;
+
+    const nonws = curr.text.replace(/\s/g, '');
+    if (!nonws) continue;
+
+    let trailingPunct = '';
+    let leadingPunct  = '';
+    for (const ch of nonws) {
+      if (OPENING.has(ch)) leadingPunct  += ch;
+      else                  trailingPunct += ch;
+    }
+
+    if (trailingPunct && i > 0 && tokens[i - 1].type === 'word') {
+      tokens[i - 1].text += trailingPunct;
+    }
+    if (leadingPunct) {
+      for (let j = i + 1; j < tokens.length; j++) {
+        if (tokens[j].type === 'word') {
+          tokens[j].text = leadingPunct + tokens[j].text;
+          break;
+        }
+      }
     }
   }
 

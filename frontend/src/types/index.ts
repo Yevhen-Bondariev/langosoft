@@ -23,6 +23,7 @@ export interface Paragraph {
   deeplText?: string;
   refinedText?: string;
   ukrainianText?: string;
+  lineTransJson?: string;
 }
 
 export interface Category {

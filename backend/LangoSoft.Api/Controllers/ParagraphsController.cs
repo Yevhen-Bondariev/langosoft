@@ -137,6 +137,16 @@ public class ParagraphsController(AppDbContext db, WordService wordService) : Co
         return NoContent();
     }
 
+    [HttpPatch("{id:int}/line-trans")]
+    public async Task<IActionResult> SetLineTrans(int id, [FromBody] string lineTransJson)
+    {
+        var para = await db.Paragraphs.FindAsync(id);
+        if (para == null) return NotFound();
+        para.LineTransJson = lineTransJson;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     public record SeedGlossRequest(string GlossJson, string TargetLanguage = "English");
 
     // Development-only: seed a pre-computed gloss into the cache (bypasses Groq for testing).

@@ -10,4 +10,5 @@ public class Paragraph
     public string? DeeplText { get; set; }
     public string? RefinedText { get; set; }
     public string? UkrainianText { get; set; }
+    public string? LineTransJson { get; set; }
 }

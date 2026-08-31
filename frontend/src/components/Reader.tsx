@@ -204,6 +204,7 @@ interface SettingsModalProps {
   showLine2: boolean; onLine2Change: (v: boolean) => void;
   showLine3: boolean; onLine3Change: (v: boolean) => void;
   showLine4: boolean; onLine4Change: (v: boolean) => void;
+  showLine5: boolean; onLine5Change: (v: boolean) => void;
   theme?: string;
   onThemeChange?: (t: string) => void;
   onClose: () => void;
@@ -217,6 +218,7 @@ const SettingsModal = memo(function SettingsModal({
   vocabTotal, vocabCount, onVocabReset,
   showLine0, onLine0Change, showLine1, onLine1Change, showLine2, onLine2Change,
   showLine3, onLine3Change, showLine4, onLine4Change,
+  showLine5, onLine5Change,
   theme, onThemeChange,
   onClose,
 }: SettingsModalProps) {
@@ -362,7 +364,8 @@ const SettingsModal = memo(function SettingsModal({
               {[
                 { n: 1, label: 'Italian original',       val: showLine1, onChange: onLine1Change },
                 { n: 2, label: 'Word-by-word gloss',     val: showLine2, onChange: onLine2Change },
-                { n: 3, label: 'Longfellow translation', val: showLine3, onChange: onLine3Change },
+                { n: 5, label: 'Literal translation',    val: showLine5, onChange: onLine5Change },
+                { n: 3, label: 'Literary translation',  val: showLine3, onChange: onLine3Change },
                 { n: 4, label: 'Ukrainian translation',  val: showLine4, onChange: onLine4Change },
                 { n: 0, label: 'Mnemonic stories',       val: showLine0, onChange: onLine0Change },
               ].map(({ n, label, val, onChange }) => (
@@ -522,6 +525,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [showLine2, setShowLine2] = useState(() => localStorage.getItem('show-line2') !== 'false');
   const [showLine3, setShowLine3] = useState(() => localStorage.getItem('show-line3') !== 'false');
   const [showLine4, setShowLine4] = useState(() => localStorage.getItem('show-line4') !== 'false');
+  const [showLine5, setShowLine5] = useState(() => localStorage.getItem('show-line5') !== 'false');
   const [mnemonics, setMnemonics] = useState<Record<string, string>>({});
 
   const lineLiteraryCache = useRef<Map<string, string>>(new Map());
@@ -553,6 +557,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const handleLine2Change = useCallback((v: boolean) => { setShowLine2(v); localStorage.setItem('show-line2', String(v)); }, []);
   const handleLine3Change = useCallback((v: boolean) => { setShowLine3(v); localStorage.setItem('show-line3', String(v)); }, []);
   const handleLine4Change = useCallback((v: boolean) => { setShowLine4(v); localStorage.setItem('show-line4', String(v)); }, []);
+  const handleLine5Change = useCallback((v: boolean) => { setShowLine5(v); localStorage.setItem('show-line5', String(v)); }, []);
   const handleCloseSettings = useCallback(() => { setShowSettings(false); currentWordRef.current?.focus(); }, []);
 
   useEffect(() => {
@@ -1701,6 +1706,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
       const hasGloss = !!(perParaMap || staticGlossRef.current);
       const longfellowLines = para.longfellowText?.split('\n') ?? [];
       const ukrainianLines = para.ukrainianText?.split('\n') ?? [];
+      const literalLines: string[] = (() => {
+        try { return para.lineTransJson ? JSON.parse(para.lineTransJson) : []; }
+        catch { return []; }
+      })();
 
       // Split tokens into verse lines at newline-bearing space tokens
       const lineGroups: Array<Array<{ token: (typeof paraTokens)[number]; origTi: number }>> = [];
@@ -1740,6 +1749,12 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+                {/* Literal translation — between gloss and Longfellow */}
+                {showLine5 && literalLines[li] && (
+                  <div className="font-mono text-base leading-snug text-emerald-400">
+                    {literalLines[li]}
                   </div>
                 )}
                 {/* Longfellow — 2nd line */}
@@ -1987,20 +2002,41 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
 
       {/* Inline line toggles */}
       <div className="flex items-center gap-1.5 px-4 py-1 bg-slate-950 border-b border-slate-800 shrink-0">
+        <button
+          onClick={() => handleLine1Change(!showLine1)}
+          role="switch" aria-checked={showLine1} aria-label="Toggle line Italian"
+          className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors select-none ${showLine1 ? 'text-slate-200 bg-slate-800' : 'text-slate-600 bg-transparent'}`}
+        >Italian</button>
+        {/* Gloss + translations — grouped with a border */}
+        <div className="flex items-center gap-0.5 border border-slate-700 rounded px-1 py-0.5">
+          {([
+            { label: 'Gloss',    val: showLine2, fn: handleLine2Change, on: 'text-sky-400'     },
+            { label: 'Literal',  val: showLine5, fn: handleLine5Change, on: 'text-emerald-400' },
+            { label: 'Literary', val: showLine3, fn: handleLine3Change, on: 'text-slate-400'   },
+          ] as const).map(({ label, val, fn, on }) => (
+            <button
+              key={label}
+              onClick={() => fn(!val)}
+              role="switch"
+              aria-checked={val}
+              aria-label={`Toggle line ${label}`}
+              className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors select-none ${val ? `${on} bg-slate-800` : 'text-slate-600 bg-transparent'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {([
-          { label: 'Mnemonics', val: showLine0, fn: handleLine0Change, on: 'text-violet-400', off: 'text-slate-600' },
-          { label: 'Italian',   val: showLine1, fn: handleLine1Change, on: 'text-slate-200',  off: 'text-slate-600' },
-          { label: 'Gloss',     val: showLine2, fn: handleLine2Change, on: 'text-sky-400',    off: 'text-slate-600' },
-          { label: 'English',   val: showLine3, fn: handleLine3Change, on: 'text-slate-400',  off: 'text-slate-600' },
-          { label: 'Ukrainian', val: showLine4, fn: handleLine4Change, on: 'text-amber-300',  off: 'text-slate-600' },
-        ] as const).map(({ label, val, fn, on, off }) => (
+          { label: 'Ukrainian', val: showLine4, fn: handleLine4Change, on: 'text-amber-300'  },
+          { label: 'Mnemonics', val: showLine0, fn: handleLine0Change, on: 'text-violet-400' },
+        ] as const).map(({ label, val, fn, on }) => (
           <button
             key={label}
             onClick={() => fn(!val)}
             role="switch"
             aria-checked={val}
             aria-label={`Toggle line ${label}`}
-            className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors select-none ${val ? `${on} bg-slate-800` : `${off} bg-transparent`}`}
+            className={`text-xs font-mono font-semibold px-2 py-0.5 rounded transition-colors select-none ${val ? `${on} bg-slate-800` : 'text-slate-600 bg-transparent'}`}
           >
             {label}
           </button>
@@ -2393,6 +2429,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           showLine2={showLine2} onLine2Change={handleLine2Change}
           showLine3={showLine3} onLine3Change={handleLine3Change}
           showLine4={showLine4} onLine4Change={handleLine4Change}
+          showLine5={showLine5} onLine5Change={handleLine5Change}
           theme={theme}
           onThemeChange={onThemeChange}
           onClose={handleCloseSettings}
