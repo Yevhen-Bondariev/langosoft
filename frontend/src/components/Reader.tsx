@@ -1272,6 +1272,9 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         return;
       }
 
+      // Let browser shortcuts (Ctrl+F, Ctrl+C, Cmd+F, etc.) pass through
+      if (e.ctrlKey || e.metaKey) return;
+
       // Search mode
       if (searchMode) {
         if (e.key === 'Escape') { setSearchMode(false); setSearchQuery(''); e.preventDefault(); return; }
