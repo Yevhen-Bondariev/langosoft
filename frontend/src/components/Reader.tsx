@@ -644,7 +644,8 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [statusMsg, setStatusMsg] = useState('');
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [currentHint, setCurrentHint] = useState<PhonemeHint | null>(null);
-  const [, setCurrentWordGloss] = useState<string>('');
+  const [currentWordGloss, setCurrentWordGloss] = useState<string>('');
+  const [glossVisible, setGlossVisible] = useState(false);
   const [, setGlossLoading] = useState(false);
   const [glossCacheVersion, setGlossCacheVersion] = useState(0);
   const glossFetchingRef = useRef<Set<string>>(new Set());
@@ -1999,12 +2000,18 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           style={isCurrentWord ? undefined : { color: freqColor(token.rawWord) }}
           onClick={e => {
             e.stopPropagation();
-            if (isCurrent && token.wordIndex !== null) {
-              setCurrentWordIndex(token.wordIndex);
+            const isAlreadyActive = isCurrent && token.wordIndex === currentWordIndex;
+            if (isAlreadyActive) {
+              setGlossVisible(v => !v);
             } else {
-              setCurrentParagraphIndex(paraIdx);
-              setCurrentWordIndex(token.wordIndex ?? 0);
-              saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
+              if (isCurrent && token.wordIndex !== null) {
+                setCurrentWordIndex(token.wordIndex);
+              } else {
+                setCurrentParagraphIndex(paraIdx);
+                setCurrentWordIndex(token.wordIndex ?? 0);
+                saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
+              }
+              setGlossVisible(true);
             }
           }}
           onDoubleClick={e => {
@@ -2082,6 +2089,11 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                           {showLine2 && hasGloss && (
                             <span className="text-sky-400 font-mono text-sm leading-tight">
                               {eng || '·'}
+                            </span>
+                          )}
+                          {isCurrent && glossVisible && token.wordIndex === currentWordIndex && currentWordGloss && (
+                            <span className="text-emerald-300 text-xs bg-slate-800 border border-emerald-700/50 px-1.5 py-0.5 rounded mt-0.5 whitespace-nowrap select-text">
+                              {currentWordGloss}
                             </span>
                           )}
                         </div>
@@ -2285,7 +2297,17 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         onClick={outerClick} aria-current={isCurrent ? 'true' : undefined}>
         {paraTokens.map((token, ti) => {
           if (token.type !== 'word') return <span key={ti}>{token.text}</span>;
-          return renderWordSpan(token, ti);
+          const isActive = isCurrent && token.wordIndex === currentWordIndex;
+          return (
+            <span key={ti} className="relative inline-flex flex-col items-start align-top">
+              {renderWordSpan(token, ti)}
+              {isActive && glossVisible && currentWordGloss && (
+                <span className="text-emerald-300 text-xs bg-slate-800 border border-emerald-700/50 px-1.5 py-0.5 rounded mt-0.5 whitespace-nowrap select-text z-10">
+                  {currentWordGloss}
+                </span>
+              )}
+            </span>
+          );
         })}
         {book.language !== 'en' && (() => {
           const glossMap = glossWordCache.current.get(`${paraIdx}::en`);
