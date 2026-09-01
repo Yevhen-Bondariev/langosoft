@@ -36,7 +36,7 @@ _ssl_ctx.verify_mode = ssl.CERT_NONE
 # ── Constants ──────────────────────────────────────────────────────────────────
 NORVIG_URL   = "https://www.norvig.com/ngrams/count_1w.txt"
 NORVIG_CACHE = "norvig_10k.txt"
-TOP_K        = 10_000
+TOP_K        = 20_000
 OUTPUT       = "frontend/public/mnemonic-candidates.json"
 
 CHAR_SCORE   = 10   # per consecutive character matched
@@ -272,8 +272,7 @@ def _char_scores(italian: str, sorted_en: list[str]) -> dict[str, int]:
         lo = bisect.bisect_left(sorted_en, prefix)
         hi = bisect.bisect_left(sorted_en, prefix[:-1] + chr(ord(prefix[-1]) + 1))
         for w in sorted_en[lo:hi]:
-            if w != iw:
-                scores[w] = max(scores.get(w, 0), score)
+            scores[w] = max(scores.get(w, 0), score)
     return scores
 
 
