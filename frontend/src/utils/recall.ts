@@ -86,7 +86,7 @@ export function sentenceAtWord(paragraphText: string, wordIndex: number): string
 // Normalize a word for diff comparison: lowercase + unify apostrophe variants + strip diacritics
 const normForDiff = (w: string) =>
   w.toLowerCase()
-   .replace(/['''ʼʹ`]/g, "'")
+   .replace(/['‘’ʼʹ`]/g, "'")
    .normalize('NFD').replace(/[̀-ͯ]/g, '')
    .replace(/[^a-z0-9']/g, '');
 

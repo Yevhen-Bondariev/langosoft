@@ -1890,7 +1890,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   }
 
                   // Contraction lookup — split on apostrophe, resolve each part
-                  const rawParts = lower.split(/[‘’’ʼ`]/).filter(p => p.length > 0);
+                  const rawParts = lower.split(/['‘’ʼ]/).filter(p => p.length > 0);
                   if (rawParts.length < 2) return null;
                   const resolved = rawParts.map(p => ({ part: p, form: PART_EXPAND[p] ?? p }));
                   const partItems: { form: string; key: string; kind: string }[] = [];
