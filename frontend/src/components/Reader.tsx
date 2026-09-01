@@ -101,6 +101,21 @@ function playTone(freq: number, dur: number, type: OscillatorType = 'sine', vol 
 function playSuccess() {
   playTone(523, 0.08); setTimeout(() => playTone(659, 0.08), 90); setTimeout(() => playTone(784, 0.18), 180);
 }
+function playFanfare() {
+  // Rising arpeggio → triumphant chord
+  const seq: Array<[number, number, number]> = [
+    [392, 0.10, 0],    // G4
+    [523, 0.10, 90],   // C5
+    [659, 0.10, 180],  // E5
+    [784, 0.12, 270],  // G5
+    [1047, 0.65, 370], // C6 held
+    [784,  0.65, 370], // G5 harmony
+    [523,  0.65, 370], // C5 harmony
+  ];
+  seq.forEach(([freq, dur, delay]) =>
+    setTimeout(() => playTone(freq, dur, 'square', 0.15), delay)
+  );
+}
 function playFailure() {
   playTone(220, 0.15, 'sawtooth', 0.2); setTimeout(() => playTone(196, 0.2, 'sawtooth', 0.15), 160);
 }
@@ -1013,7 +1028,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       // Completing the current chapter — show celebration
       const completedTitle = chapters.find(c => c.number === chapterNum)?.title ?? `Chapter ${chapterNum + 1}`;
       setCantoComplete({ title: completedTitle, newWords: todayNewWords });
-      playSuccess();
+      playFanfare();
     }
     const clamped = Math.max(0, Math.min(num, totalChapters - 1));
     onChapterChange(clamped);

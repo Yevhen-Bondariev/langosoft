@@ -73,10 +73,17 @@ export function HeatmapModal({ dailyLog, goalMinutes, onGoalChange, onClose }: P
         </div>
 
         {/* Daily goal */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 mb-4">
           <span className="text-xs text-slate-400">Daily goal</span>
           <button onClick={() => onGoalChange(goalMinutes - 5)} className="w-7 h-7 bg-slate-700 hover:bg-slate-600 rounded text-slate-200 text-base leading-none transition-colors">−</button>
-          <span className="text-sm font-semibold text-slate-200 w-12 text-center">{goalMinutes} min</span>
+          <input
+            type="number"
+            min={5} max={120} step={5}
+            value={goalMinutes}
+            onChange={e => onGoalChange(Number(e.target.value))}
+            className="w-14 bg-slate-700 border border-slate-600 rounded px-2 py-0.5 text-sm font-semibold text-slate-200 text-center focus:outline-none focus:border-amber-500"
+          />
+          <span className="text-xs text-slate-500">min</span>
           <button onClick={() => onGoalChange(goalMinutes + 5)} className="w-7 h-7 bg-slate-700 hover:bg-slate-600 rounded text-slate-200 text-base leading-none transition-colors">+</button>
         </div>
 
