@@ -101,6 +101,11 @@ function playTone(freq: number, dur: number, type: OscillatorType = 'sine', vol 
 function playSuccess() {
   playTone(523, 0.08); setTimeout(() => playTone(659, 0.08), 90); setTimeout(() => playTone(784, 0.18), 180);
 }
+function playDebtChime() {
+  playTone(440, 0.15, 'sine', 0.2);
+  setTimeout(() => playTone(370, 0.15, 'sine', 0.18), 170);
+  setTimeout(() => playTone(311, 0.25, 'sine', 0.15), 340);
+}
 function playFanfare() {
   // Rising arpeggio → triumphant chord
   const seq: Array<[number, number, number]> = [
@@ -118,6 +123,45 @@ function playFanfare() {
 }
 function playFailure() {
   playTone(220, 0.15, 'sawtooth', 0.2); setTimeout(() => playTone(196, 0.2, 'sawtooth', 0.15), 160);
+}
+
+const DAY_START_H = 8;   // 8 am
+const DAY_END_H   = 24;  // midnight  (16-hour window)
+const DAY_SPAN    = DAY_END_H - DAY_START_H;
+
+function dayTimeFraction(): number {
+  const n = new Date();
+  const h = n.getHours() + n.getMinutes() / 60;
+  return Math.max(0, Math.min((h - DAY_START_H) / DAY_SPAN, 1));
+}
+
+function DayProgressBar({ todayMinutes, goalMinutes }: { todayMinutes: number; goalMinutes: number }) {
+  const [timeFrac, setTimeFrac] = useState(dayTimeFraction);
+  useEffect(() => {
+    const id = setInterval(() => setTimeFrac(dayTimeFraction()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const actualFrac = goalMinutes > 0 ? Math.min(todayMinutes / goalMinutes, 1) : 0;
+  const onTrack    = actualFrac >= timeFrac - 0.001;
+  const fillColor  = onTrack ? 'bg-emerald-500' : 'bg-amber-400';
+  const tickVisible = timeFrac > 0 && timeFrac < 1;
+
+  return (
+    <div
+      className="relative w-full bg-slate-800/60 shrink-0"
+      style={{ height: 4 }}
+      title={`${todayMinutes}/${goalMinutes} min — ${onTrack ? 'on track' : 'behind pace'}`}
+    >
+      <div className={`absolute inset-y-0 left-0 ${fillColor}`} style={{ width: `${actualFrac * 100}%` }} />
+      {tickVisible && (
+        <div
+          className="absolute bg-slate-300/90 pointer-events-none"
+          style={{ left: `${timeFrac * 100}%`, top: -2, bottom: -2, width: 2 }}
+        />
+      )}
+    </div>
+  );
 }
 
 function RecallResults({ diff, explanation, explainLoading, onRetry, onExplain: _onExplain, onHear: _onHear, onHearTranslation: _onHearTranslation, onClose }: {
@@ -604,6 +648,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [showVocabChart, setShowVocabChart] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [cantoComplete, setCantoComplete] = useState<{ title: string; newWords: number } | null>(null);
+  const [debtAlert, setDebtAlert] = useState<{ debt: number; needed: number } | null>(null);
   const [showLine0, setShowLine0] = useState(() => localStorage.getItem('show-line0') !== 'false');
   const [showLine1, setShowLine1] = useState(() => localStorage.getItem('show-line1') !== 'false');
   const [showLine2, setShowLine2] = useState(() => localStorage.getItem('show-line2') !== 'false');
@@ -787,6 +832,33 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     onSpeak();
     speakChainRaw(items);
   }, [speakChainRaw, onSpeak]);
+
+  // Refs so the hourly-debt interval always sees fresh values without re-subscribing.
+  const todayMinutesRef = useRef(todayMinutes);
+  const goalMinutesRef  = useRef(goalMinutes);
+  useEffect(() => { todayMinutesRef.current = todayMinutes; }, [todayMinutes]);
+  useEffect(() => { goalMinutesRef.current  = goalMinutes;  }, [goalMinutes]);
+
+  // Hourly debt check — fires every minute, acts only at :00 within active window.
+  const alertedHoursRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const id = setInterval(() => {
+      const n = new Date();
+      if (n.getMinutes() !== 0) return;
+      const h = n.getHours();
+      if (h < DAY_START_H || h >= DAY_END_H) return;
+      if (alertedHoursRef.current.has(h)) return;
+      const timeFrac   = (h - DAY_START_H) / DAY_SPAN;
+      const needed     = Math.round(timeFrac * goalMinutesRef.current);
+      const actual     = todayMinutesRef.current;
+      if (actual < needed) {
+        alertedHoursRef.current.add(h);
+        setDebtAlert({ debt: needed - actual, needed });
+        playDebtChime();
+      }
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Load progress on mount
   useEffect(() => {
@@ -2356,6 +2428,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           </button>
         </div>
       )}
+      {/* Day progress bar — full width, always visible for non-English books */}
+      {book.language !== 'en' && (
+        <DayProgressBar todayMinutes={todayMinutes} goalMinutes={goalMinutes} />
+      )}
 
       {/* Inline line toggles */}
       <div className="flex items-center gap-1.5 px-4 py-1 bg-slate-950 border-b border-slate-800 shrink-0">
@@ -3031,6 +3107,22 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           newWords={cantoComplete.newWords}
           onClose={() => setCantoComplete(null)}
         />
+      )}
+
+      {/* Hourly debt alert */}
+      {debtAlert && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-[fadeInUp_0.3s_ease-out]">
+          <div className="bg-slate-900/95 border border-amber-500/50 rounded-xl shadow-2xl px-6 py-4 flex items-start gap-4 max-w-xs">
+            <span className="text-2xl">⏰</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-amber-400 font-semibold text-sm">Behind on reading goal</p>
+              <p className="text-slate-300 text-xs mt-0.5">
+                {debtAlert.debt} min behind — need {debtAlert.needed} min by now
+              </p>
+            </div>
+            <button onClick={() => setDebtAlert(null)} className="text-slate-500 hover:text-slate-200 text-lg leading-none mt-0.5">✕</button>
+          </div>
+        </div>
       )}
 
     </div>
