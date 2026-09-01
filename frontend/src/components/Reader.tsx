@@ -2300,15 +2300,19 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   {recallHintLoading && <p style={{ color: '#475569', fontSize: '0.75rem', marginTop: '0.5rem' }}>Loading hints…</p>}
                 </>
               ) : (
-                /* En→It mode: show word-by-word gloss (line 2) as prompt; user types Italian */
+                /* En→It mode: show literal translation as prompt; user types Italian */
                 <>
                   <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                    Word-by-word gloss — type the Italian
+                    Literal translation — type the Italian
                   </p>
-                  {recallGlossLine ? (
+                  {recallHintLoading ? (
+                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Loading…</p>
+                  ) : recallHintLiteral ? (
+                    <p style={{ color: '#7dd3fc', fontSize: '1.1rem', lineHeight: 1.7 }}>{recallHintLiteral}</p>
+                  ) : recallGlossLine ? (
                     <p style={{ color: '#7dd3fc', fontSize: '1.1rem', lineHeight: 1.7 }}>{recallGlossLine}</p>
                   ) : (
-                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Gloss unavailable</p>
+                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Translation unavailable</p>
                   )}
                 </>
               )}
@@ -2359,7 +2363,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   onChange={e => setRecallInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitRecall(); }
-                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); announceToNvda(recallSentence); } else { if (recallGlossLine) { speak(recallGlossLine, { lang: 'en' }); announceToNvda(recallGlossLine); } } }
+                    if (e.key === '8') { e.preventDefault(); if (recallToTranslation) { speak(recallSentence); announceToNvda(recallSentence); } else { const hint = recallHintLiteral || recallGlossLine; if (hint) { speak(hint, { lang: 'en' }); announceToNvda(hint); } } }
                     if (e.key === '2') { e.preventDefault(); if (customAnswer) speak(customAnswer, { lang: 'en' }); }
                     if (e.key === '0') { e.preventDefault(); setCustomQuestionOpen(open => { const next = !open; if (next) setTimeout(() => customQuestionRef.current?.focus(), 50); else setTimeout(() => recallTextareaRef.current?.focus(), 50); return next; }); }
                   }}
