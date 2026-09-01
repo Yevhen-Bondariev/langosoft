@@ -568,6 +568,13 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     catch { return {}; }
   });
   const [mnemonicCustomInput, setMnemonicCustomInput] = useState('');
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+
+  const isAutoPlayingRef = useRef(false);
+  const paragraphsRef = useRef<Paragraph[]>([]);
+  const currentParagraphIndexRef = useRef(0);
+  const currentWordIndexRef = useRef(0);
+  const autoPlayTickRef = useRef<(() => void) | null>(null);
 
   const lineLiteraryCache = useRef<Map<string, string>>(new Map());
   // Per-word translation cache: "${paraIdx}::en" → Map<normWord, translation> (filled by API/DB)
@@ -928,6 +935,11 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       .catch(() => {});
   }, [currentParagraphIndex, paragraphs, book.language]);
 
+  // Keep auto-play refs in sync with state
+  useEffect(() => { paragraphsRef.current = paragraphs; }, [paragraphs]);
+  useEffect(() => { currentParagraphIndexRef.current = currentParagraphIndex; }, [currentParagraphIndex]);
+  useEffect(() => { currentWordIndexRef.current = currentWordIndex; }, [currentWordIndex]);
+
   const wordTokens = getWordTokens(tokens);
   const totalChapters = chapters.length;
   const currentChapter = chapters.find(c => c.number === chapterNum);
@@ -1045,7 +1057,18 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     }
   }, [customQuestion, recallSentence, recallHintLiterary, recallHintLiteral]);
 
+  const stopAutoPlay = useCallback(() => {
+    isAutoPlayingRef.current = false;
+    setIsAutoPlaying(false);
+    stop();
+  }, [stop]);
+
   const enterRecall = useCallback(() => {
+    // Stop continuous narration before entering recall mode
+    if (isAutoPlayingRef.current) {
+      isAutoPlayingRef.current = false;
+      setIsAutoPlaying(false);
+    }
     const para = paragraphs[currentParagraphIndex];
     if (!para) return;
     const sentence = lineAtWord(para.text, currentWordIndex);
@@ -1153,6 +1176,83 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     const line = lineAtWord(para.text, currentWordIndex);
     speak(line || para.text);
   }, [paragraphs, currentParagraphIndex, currentWordIndex, speak]);
+
+  const autoPlayTick = useCallback(() => {
+    if (!isAutoPlayingRef.current) return;
+    const paras = paragraphsRef.current;
+    const pIdx = currentParagraphIndexRef.current;
+    const wIdx = currentWordIndexRef.current;
+    const para = paras[pIdx];
+    if (!para) { isAutoPlayingRef.current = false; setIsAutoPlaying(false); return; }
+
+    const line = lineAtWord(para.text, wIdx);
+    const { lineIndex } = lineIndexAtWord(para.text, wIdx);
+    const literalLines: string[] = (() => {
+      try { return para.lineTransJson ? JSON.parse(para.lineTransJson) as string[] : []; }
+      catch { return []; }
+    })();
+    const literalLine = literalLines[lineIndex]?.trim() ?? '';
+
+    const advance = () => {
+      if (!isAutoPlayingRef.current) return;
+      const paras2 = paragraphsRef.current;
+      const pIdx2 = currentParagraphIndexRef.current;
+      const wIdx2 = currentWordIndexRef.current;
+      const para2 = paras2[pIdx2];
+      if (!para2) { isAutoPlayingRef.current = false; setIsAutoPlaying(false); return; }
+
+      if (para2.text.includes('\n')) {
+        const { lineIndex: li2, totalLines } = lineIndexAtWord(para2.text, wIdx2);
+        if (li2 < totalLines - 1) {
+          const nextWordIdx = firstWordOfLine(para2.text, li2 + 1);
+          currentWordIndexRef.current = nextWordIdx;
+          setCurrentWordIndex(nextWordIdx);
+          saveProgress(chapterNum, pIdx2, nextWordIdx);
+        } else {
+          const nextPIdx = pIdx2 + 1;
+          if (nextPIdx >= paras2.length) { isAutoPlayingRef.current = false; setIsAutoPlaying(false); return; }
+          currentParagraphIndexRef.current = nextPIdx;
+          currentWordIndexRef.current = 0;
+          setCurrentParagraphIndex(nextPIdx);
+          setCurrentWordIndex(0);
+          setCurrentHint(null);
+          saveProgress(chapterNum, nextPIdx, 0);
+        }
+      } else {
+        const nextPIdx = pIdx2 + 1;
+        if (nextPIdx >= paras2.length) { isAutoPlayingRef.current = false; setIsAutoPlaying(false); return; }
+        currentParagraphIndexRef.current = nextPIdx;
+        currentWordIndexRef.current = 0;
+        setCurrentParagraphIndex(nextPIdx);
+        setCurrentWordIndex(0);
+        setCurrentHint(null);
+        saveProgress(chapterNum, nextPIdx, 0);
+      }
+      setTimeout(() => autoPlayTickRef.current?.(), 150);
+    };
+
+    // English literal uses lang:'en' (David via resolveVoice fallback); Italian uses book default
+    const speakOriginal = () => speak(line || para.text, { onend: advance });
+    if (literalLine) {
+      speak(literalLine, { lang: 'en', onend: speakOriginal });
+    } else {
+      speakOriginal();
+    }
+  }, [speak, saveProgress, chapterNum]);
+
+  // Keep autoPlayTickRef pointing at the latest closure every render
+  useEffect(() => { autoPlayTickRef.current = autoPlayTick; });
+
+  const startAutoPlay = useCallback(() => {
+    isAutoPlayingRef.current = true;
+    setIsAutoPlaying(true);
+    autoPlayTickRef.current?.();
+  }, []);
+
+  const toggleAutoPlay = useCallback(() => {
+    if (isAutoPlayingRef.current) stopAutoPlay();
+    else startAutoPlay();
+  }, [stopAutoPlay, startAutoPlay]);
 
 const openAddFlashcard = useCallback((wordIdx?: number) => {
     const idx = wordIdx !== undefined ? wordIdx : currentWordIndex;
@@ -1317,10 +1417,10 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         return;
       }
 
-      // Ctrl (alone) = stop TTS — works everywhere
+      // Ctrl (alone) = stop TTS and auto-play — works everywhere
       if (e.key === 'Control' && !e.altKey && !e.shiftKey && !e.metaKey) {
         e.preventDefault();
-        stop();
+        stopAutoPlay();
         return;
       }
 
@@ -1360,6 +1460,15 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
 
       const code = e.code;
       const key = e.key;
+
+      // ── Space ── toggle continuous narration
+      if (key === ' ') {
+        e.preventDefault();
+        toggleAutoPlay();
+        return;
+      }
+      // Any other key stops auto-play (prevents double-speak with manual navigation)
+      if (isAutoPlayingRef.current) stopAutoPlay();
 
       // ── 1 / Numpad1 ── previous letter
       if (key === '1' || code === 'Numpad1') {
@@ -1637,6 +1746,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     customQuestionOpen, customAnswer, submitCustomQuestion,
     saveProgress, book.language, ttsRate, onRateToggle, onRateChange, showStatus,
     showSettings, showKeyboardRef, playLineBell, playArchaismTone,
+    toggleAutoPlay, stopAutoPlay,
   ]);
 
   // Swipe gestures for mobile reading pane
@@ -1733,12 +1843,9 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                 setCurrentWordIndex(token.wordIndex ?? 0);
                 saveProgress(chapterNum, paraIdx, token.wordIndex ?? 0);
               }
-            } else if (e.key === ' ') {
-              e.preventDefault();
-              if (token.wordIndex !== null) openAddFlashcard(token.wordIndex);
             }
           }}
-          title={hasHint ? phonemeHints[token.rawWord.toLowerCase()]?.display : 'Double-click or Space/long-press to add to flashcards'}
+          title={hasHint ? phonemeHints[token.rawWord.toLowerCase()]?.display : 'Double-click or long-press to add to flashcards'}
         >
           {token.text}
         </span>
@@ -2528,6 +2635,15 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           </div>
         ) : (
           <div role="toolbar" aria-label="Reading shortcuts" className="flex items-center gap-1 flex-wrap">
+            <button
+              aria-label={isAutoPlaying ? 'Pause narration (Space)' : 'Play narration (Space)'}
+              aria-keyshortcuts="Space"
+              onClick={toggleAutoPlay}
+              className={`flex flex-col items-center w-14 py-1.5 rounded transition-colors focus-visible:ring-1 focus-visible:ring-amber-500 ${isAutoPlaying ? 'bg-emerald-800/60 text-emerald-300 hover:bg-emerald-700/60' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+            >
+              <span className="text-[10px] leading-none mb-0.5">{isAutoPlaying ? 'Pause' : 'Play'}</span>
+              <kbd className="bg-slate-700 border border-slate-600 text-amber-300 text-[10px] px-1 py-0.5 rounded font-mono">Spc</kbd>
+            </button>
             {([
               { label: 'Stop',      key: 'Ctrl', ariaKey: 'Control', onClick: () => stop() },
               { label: 'Word',      key: '5',    ariaKey: '5',       onClick: () => { const t = wordTokens[currentWordIndex]; if (!t) return; const w = t.rawWord || t.text; const tr = resolveGloss(w, glossWordCache.current.get(`${currentParagraphIndex}::en`), staticGlossRef.current); if (book.language !== 'en' && tr) { speakChain([{ text: w, lang: book.language }, { text: tr, lang: 'en' }]); } else { speak(w); } } },
@@ -2650,10 +2766,16 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   ] as [string, string][],
                 },
                 {
+                  title: 'Continuous Narration',
+                  rows: [
+                    ['Space', 'Play / Pause — reads each line aloud and auto-advances'],
+                    ['Ctrl', 'Stop immediately and cancel auto-play'],
+                  ] as [string, string][],
+                },
+                {
                   title: 'Speed & Speech',
                   rows: [
                     ['↑  /  ↓', 'Adjust speed by ±0.1× (current: ' + ttsRate.toFixed(1) + '×)'],
-                    ['Ctrl', 'Stop speech immediately — works everywhere, even while typing'],
                   ] as [string, string][],
                 },
                 {

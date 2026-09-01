@@ -5,6 +5,7 @@ interface SpeakOptions {
   rate?: number;
   pitch?: number;
   lang?: string;
+  onend?: () => void;
 }
 
 interface ChainItem {
@@ -36,7 +37,12 @@ export function useTTS(
   getVoiceForLang?: VoiceResolver,
 ) {
   const resolveVoice = useCallback((langPrefix: string): SpeechSynthesisVoice | null => {
-    if (langPrefix === 'en') return voice ?? null;
+    // For English: try explicit selectedVoice first, fall back to getVoiceForLang
+    // (handles name-mismatch where selectedVoice is null but getVoiceForLang auto-picks David)
+    if (langPrefix === 'en') {
+      if (voice) return voice;
+      return getVoiceForLang ? getVoiceForLang('en') : pickVoice('en');
+    }
     return getVoiceForLang ? getVoiceForLang(langPrefix) : pickVoice(langPrefix);
   }, [voice, getVoiceForLang]);
 
@@ -64,6 +70,7 @@ export function useTTS(
       u.lang = targetLang;
     }
 
+    if (options?.onend) u.onend = () => options.onend!();
     window.speechSynthesis.speak(u);
   }, [resolveVoice, voice, rate, defaultLang]);
 

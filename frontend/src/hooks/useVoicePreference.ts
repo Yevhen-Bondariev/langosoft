@@ -33,9 +33,10 @@ export function useVoicePreference() {
       if (v.length === 0) return;
       setVoices(v);
       setLangVoiceNames(prev => {
-        if (prev['en'] && v.some(x => x.name === prev['en'])) return prev;
-        const def = pickDefaultVoice(v);
-        const updated = { ...prev, en: def };
+        // Always prefer David if available — overrides any stored name drift
+        const best = pickDefaultVoice(v);
+        if (prev['en'] === best) return prev;
+        const updated = { ...prev, en: best };
         localStorage.setItem(MULTI_KEY, JSON.stringify(updated));
         return updated;
       });
@@ -60,11 +61,22 @@ export function useVoicePreference() {
     const prefix = lang.split('-')[0];
     const storedName = langVoiceNames[prefix];
     if (storedName) {
+      // Exact match
       const found = voices.find(v => v.name === storedName);
       if (found) return found;
+      // Partial match: "Microsoft David Desktop" ↔ "Microsoft David" (browser name drift)
+      const key = storedName.split(' ').slice(0, 3).join(' ');
+      const partial = voices.find(v => v.name.startsWith(key));
+      if (partial) return partial;
     }
-    // Auto-pick: prefer Google voice, then first match
     const matches = voices.filter(v => v.lang.startsWith(prefix));
+    if (prefix === 'en') {
+      // For English prefer David/male over Google (Google US English is typically female)
+      const david = matches.find(v => v.name.toLowerCase().includes('david'));
+      if (david) return david;
+      const male = matches.find(v => /\b(mark|james|guy|reed|fred|ralph)\b/i.test(v.name));
+      if (male) return male;
+    }
     return matches.find(v => v.name.includes('Google')) ?? matches[0] ?? null;
   }, [voices, langVoiceNames]);
 
@@ -74,8 +86,12 @@ export function useVoicePreference() {
   }, [voices]);
 
   const englishVoices = voices.filter(v => v.lang.startsWith('en'));
-  const selectedVoice = voices.find(v => v.name === langVoiceNames['en']) ?? null;
   const selectedVoiceName = langVoiceNames['en'] ?? '';
+  // Exact match first; if stored name has "david" accept any David voice (handles name drift)
+  const selectedVoice = voices.find(v => v.name === selectedVoiceName)
+    ?? (selectedVoiceName.toLowerCase().includes('david')
+        ? voices.find(v => v.name.toLowerCase().includes('david')) ?? null
+        : null);
 
   return {
     // Legacy API (unchanged)
