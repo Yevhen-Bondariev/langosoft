@@ -1888,29 +1888,60 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   const rawParts = lower.split(/[‘’’ʼ`]/).filter(p => p.length > 0);
                   if (rawParts.length < 2) return null;
                   const resolved = rawParts.map(p => ({ part: p, form: PART_EXPAND[p] ?? p }));
-                  const entries = resolved
-                    .map(({ form, part }) => ({ form, story: mnemonics[form] ?? mnemonics[part] }))
-                    .filter(e => !!e.story);
-                  if (entries.length === 0) return null;
+                  const partItems: { form: string; key: string; kind: string }[] = [];
+                  for (const { part, form } of resolved) {
+                    const keys = form !== part ? [form, part] : [part];
+                    for (const k of keys) {
+                      if (mnemonics[k])                  { partItems.push({ form, key: k, kind: "mnemonic"   }); break; }
+                      if (mnemonicChoices[k])            { partItems.push({ form, key: k, kind: "choice"     }); break; }
+                      if (mnemonicCandidates[k]?.length) { partItems.push({ form, key: k, kind: "candidates" }); break; }
+                    }
+                  }
+                  if (partItems.length === 0) return null;
                   const expansion = resolved.map(r => r.form).join(" + ");
-                  // const contrImgKey = resolved[resolved.length - 1].form
-                  //   .normalize('NFKD').replace(/[̀-ͯ]/g, '');
                   return (
                     <div className="mb-0.5" onClick={e => e.stopPropagation()}>
                       <div className="font-mono text-xs not-italic text-violet-500/60 mb-0.5 select-text cursor-text">
                         {active.token.rawWord} = {expansion}
                       </div>
-                      {entries.map(({ form, story }, i) => (
-                        <div key={i} className="font-mono text-sm leading-snug text-violet-300 italic select-text cursor-text">
-                          <span className="not-italic font-bold text-violet-500 text-xs">{form} → </span>{story}
-                        </div>
-                      ))}
-                      {/* <img
-                        src={`/mnemonics-images/${contrImgKey}.jpg`}
-                        alt=""
-                        className="w-56 h-56 object-cover rounded-lg flex-shrink-0 opacity-90"
-                        onError={e => { e.currentTarget.style.display = 'none'; }}
-                      /> */}
+                      {partItems.map(({ form, key, kind }, i) => {
+                        if (kind === "mnemonic") return (
+                          <div key={i} className="font-mono text-sm leading-snug text-violet-300 italic select-text cursor-text">
+                            <span className="not-italic font-bold text-violet-500 text-xs">{form} → </span>
+                            {mnemonics[key]}
+                          </div>
+                        );
+                        if (kind === "choice") return (
+                          <div key={i} className="font-mono text-sm leading-snug text-violet-300 italic flex items-center gap-2 flex-wrap">
+                            <span className="not-italic font-bold text-violet-500 text-xs">{form} → </span>
+                            <span>{mnemonicChoices[key]}</span>
+                            <button
+                              className="not-italic text-[10px] text-violet-500/50 hover:text-violet-300 border border-violet-500/30 hover:border-violet-500/60 rounded px-1.5 py-0.5 leading-none transition-colors"
+                              onClick={() => clearMnemonicChoice(key)}
+                              title="Pick a different word"
+                            >↺</button>
+                          </div>
+                        );
+                        const cands = mnemonicCandidates[key];
+                        return (
+                          <div key={i}>
+                            <div className="text-[10px] text-violet-500/60 font-mono mb-1.5">
+                              <span className="font-bold text-violet-400">{form}</span> → pick sound-alike:
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {cands.map(c => (
+                                <button
+                                  key={c}
+                                  onClick={() => saveMnemonicChoice(key, c)}
+                                  className="text-xs px-2 py-0.5 rounded bg-violet-500/10 text-violet-300 hover:bg-violet-500/25 border border-violet-500/20 hover:border-violet-500/50 transition-colors"
+                                >
+                                  {c}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
