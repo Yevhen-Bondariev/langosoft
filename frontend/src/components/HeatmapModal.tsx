@@ -99,7 +99,6 @@ export function HeatmapModal({ dailyLog, onClose }: Props) {
                       style={{ width: 10, height: 10, borderRadius: 2 }}
                       className={`${dayColor(day.minutes)} cursor-pointer hover:ring-1 hover:ring-amber-400`}
                       onMouseEnter={() => setTooltip({ date: day.date, entry: { minutes: day.minutes, newWords: day.newWords } })}
-                      onMouseLeave={() => setTooltip(null)}
                     />
                   );
                 })}
@@ -108,16 +107,16 @@ export function HeatmapModal({ dailyLog, onClose }: Props) {
           </div>
         </div>
 
-        {/* Tooltip */}
-        {tooltip && (
-          <div className="mt-3 text-xs text-slate-400">
+        {/* Tooltip — always rendered to prevent layout shift; updates on hover, stays on last cell */}
+        <div className="mt-3 text-xs text-slate-400 h-4">
+          {tooltip && <>
             <span className="text-slate-200">{tooltip.date}</span>
             {' — '}
             {tooltip.entry.minutes > 0
               ? <>{tooltip.entry.minutes} min · {tooltip.entry.newWords} new words</>
               : 'no reading'}
-          </div>
-        )}
+          </>}
+        </div>
 
         {/* Legend */}
         <div className="flex items-center gap-1.5 mt-4 text-[10px] text-slate-500">
