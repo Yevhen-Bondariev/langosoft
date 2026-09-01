@@ -107,19 +107,48 @@ function playDebtChime() {
   setTimeout(() => playTone(311, 0.25, 'sine', 0.15), 340);
 }
 function playFanfare() {
-  // Rising arpeggio → triumphant chord
-  const seq: Array<[number, number, number]> = [
-    [392, 0.10, 0],    // G4
-    [523, 0.10, 90],   // C5
-    [659, 0.10, 180],  // E5
-    [784, 0.12, 270],  // G5
-    [1047, 0.65, 370], // C6 held
-    [784,  0.65, 370], // G5 harmony
-    [523,  0.65, 370], // C5 harmony
-  ];
-  seq.forEach(([freq, dur, delay]) =>
-    setTimeout(() => playTone(freq, dur, 'square', 0.15), delay)
-  );
+  try {
+    const ctx = new AudioContext();
+
+    function note(
+      freq: number, startT: number, dur: number,
+      vol: number, type: OscillatorType = 'sawtooth',
+    ) {
+      const osc = ctx.createOscillator();
+      const g   = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.value = freq;
+      const t0 = ctx.currentTime + startT;
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+      g.gain.setValueAtTime(vol, t0 + dur * 0.65);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      osc.start(t0);
+      osc.stop(t0 + dur);
+    }
+
+    // Bass foundation — two deep sine waves for weight
+    note(49,  0,    2.4, 0.55, 'sine');   // G1
+    note(98,  0,    2.4, 0.35, 'sine');   // G2
+    note(65,  0.55, 2.0, 0.40, 'sine');   // C2 (enters on the landing chord)
+
+    // Rising brass arpeggio (sawtooth = trumpet/trombone timbre)
+    note(196, 0.05, 0.22, 0.30);  // G3
+    note(247, 0.22, 0.22, 0.32);  // B3
+    note(294, 0.39, 0.22, 0.34);  // D4
+    note(392, 0.56, 0.22, 0.36);  // G4  ← landing
+
+    // Final power chord — sawtooth mid + sine bass sustain
+    note(131, 0.70, 1.8, 0.45, 'sine');   // C3 bass
+    note(196, 0.70, 1.8, 0.28);            // G3
+    note(262, 0.70, 1.8, 0.30);            // C4
+    note(330, 0.70, 1.6, 0.22);            // E4
+    note(392, 0.70, 1.6, 0.22);            // G4
+    note(523, 0.70, 1.4, 0.16);            // C5
+
+    setTimeout(() => ctx.close(), 3200);
+  } catch { /* ignore */ }
 }
 function playFailure() {
   playTone(220, 0.15, 'sawtooth', 0.2); setTimeout(() => playTone(196, 0.2, 'sawtooth', 0.15), 160);
@@ -149,11 +178,11 @@ function DayProgressBar({ todayMinutes, goalMinutes }: { todayMinutes: number; g
 
   return (
     <div
-      className="relative w-full bg-slate-800/60 shrink-0"
+      className="relative mx-4 rounded-sm bg-slate-800/60 shrink-0"
       style={{ height: 4 }}
       title={`${todayMinutes}/${goalMinutes} min — ${onTrack ? 'on track' : 'behind pace'}`}
     >
-      <div className={`absolute inset-y-0 left-0 ${fillColor}`} style={{ width: `${actualFrac * 100}%` }} />
+      <div className={`absolute inset-y-0 left-0 rounded-sm ${fillColor}`} style={{ width: `${actualFrac * 100}%` }} />
       {tickVisible && (
         <div
           className="absolute bg-slate-300/90 pointer-events-none"

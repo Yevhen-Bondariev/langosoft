@@ -20,15 +20,16 @@ export interface DailyEntry {
 interface StoredStats {
   streak: number;
   longestStreak: number;
-  lastReadDate: string;
+  // Date on which the current streak was last confirmed (goal met that day).
+  streakConfirmedDate: string;
   totalMinutes: number;
   goalMinutes: number;
   dailyLog: Record<string, DailyEntry>;
-  seenWords: Record<number, string[]>; // bookId → normalized word list
+  seenWords: Record<number, string[]>;
 }
 
 const DEFAULT: StoredStats = {
-  streak: 0, longestStreak: 0, lastReadDate: '',
+  streak: 0, longestStreak: 0, streakConfirmedDate: '',
   totalMinutes: 0, goalMinutes: 15,
   dailyLog: {}, seenWords: {},
 };
@@ -47,7 +48,6 @@ function saveStats(s: StoredStats) {
 
 export function useReadingStats() {
   const [stats, setStats] = useState<StoredStats>(loadStats);
-  // Ref-based sets for fast O(1) lookup without re-renders
   const seenSetsRef = useRef<Map<number, Set<string>>>(new Map());
 
   // Initialise seen-word sets from stored arrays on mount
@@ -56,24 +56,6 @@ export function useReadingStats() {
     for (const [id, words] of Object.entries(s.seenWords)) {
       seenSetsRef.current.set(Number(id), new Set(words));
     }
-  }, []);
-
-  // Update streak once on mount (mark today as read)
-  useEffect(() => {
-    const t = todayStr();
-    setStats(prev => {
-      if (prev.lastReadDate === t) return prev;
-      const streak =
-        prev.lastReadDate === prevDayStr(t) ? prev.streak + 1 : 1;
-      const updated: StoredStats = {
-        ...prev,
-        streak,
-        longestStreak: Math.max(prev.longestStreak, streak),
-        lastReadDate: t,
-      };
-      saveStats(updated);
-      return updated;
-    });
   }, []);
 
   // Track last time TTS fired — only count minutes when the user was listening.
@@ -99,6 +81,31 @@ export function useReadingStats() {
     return () => clearInterval(id);
   }, []);
 
+  // Streak: only confirmed when the daily goal is reached.
+  // Watches todayMinutes crossing the goalMinutes threshold.
+  const t = todayStr();
+  const todayEntry = stats.dailyLog[t] ?? { minutes: 0, newWords: 0 };
+  const goalReached = todayEntry.minutes >= stats.goalMinutes;
+
+  useEffect(() => {
+    if (!goalReached) return;
+    setStats(prev => {
+      const today = todayStr();
+      if (prev.streakConfirmedDate === today) return prev; // already counted today
+      const yesterday = prevDayStr(today);
+      // Streak continues only if yesterday was also confirmed, or if it's the same day (edge case)
+      const streak = prev.streakConfirmedDate === yesterday ? prev.streak + 1 : 1;
+      const updated: StoredStats = {
+        ...prev,
+        streak,
+        longestStreak: Math.max(prev.longestStreak, streak),
+        streakConfirmedDate: today,
+      };
+      saveStats(updated);
+      return updated;
+    });
+  }, [goalReached]);
+
   const setGoalMinutes = useCallback((goal: number) => {
     setStats(prev => {
       const updated = { ...prev, goalMinutes: Math.max(5, Math.min(120, goal)) };
@@ -107,7 +114,6 @@ export function useReadingStats() {
     });
   }, []);
 
-  /** Call when the user navigates to a word. Returns true if it's a new word (never seen before). */
   const trackWord = useCallback((bookId: number, word: string): boolean => {
     if (!word) return false;
     const norm = word.toLowerCase()
@@ -120,11 +126,11 @@ export function useReadingStats() {
     if (set.has(norm)) return false;
 
     set.add(norm);
-    const t = todayStr();
+    const today = todayStr();
     setStats(prev => {
       const daily = { ...prev.dailyLog };
-      const entry = daily[t] ?? { minutes: 0, newWords: 0 };
-      daily[t] = { ...entry, newWords: entry.newWords + 1 };
+      const entry = daily[today] ?? { minutes: 0, newWords: 0 };
+      daily[today] = { ...entry, newWords: entry.newWords + 1 };
       const updated: StoredStats = {
         ...prev,
         seenWords: { ...prev.seenWords, [bookId]: Array.from(set!) },
@@ -135,9 +141,6 @@ export function useReadingStats() {
     });
     return true;
   }, []);
-
-  const t = todayStr();
-  const todayEntry = stats.dailyLog[t] ?? { minutes: 0, newWords: 0 };
 
   return {
     streak: stats.streak,
