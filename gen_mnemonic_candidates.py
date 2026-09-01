@@ -221,26 +221,29 @@ def italian_to_arpabet(word: str) -> list[str]:
 
 # ── Phoneme prefix index ───────────────────────────────────────────────────────
 
-def build_phoneme_index(words: list[str]) -> dict[tuple, list[str]]:
+def build_phoneme_index(words: list[str]) -> tuple[dict[tuple, list[str]], dict[str, int]]:
     """
     For each English word that appears in cmudict, index it under every
     phoneme prefix (first 1 phoneme, first 2, …).
     Stress numbers stripped so AH0 / AH1 / AH2 all become AH.
+    Also returns word_lengths: {word: total_phoneme_count}.
     """
     from nltk.corpus import cmudict
     d = cmudict.dict()
 
     index: dict[tuple, list[str]] = {}
+    word_lengths: dict[str, int] = {}
     for word in words:
         if word not in d:
             continue
         raw = d[word][0]                              # first pronunciation
         phonemes = [re.sub(r"\d+", "", p) for p in raw]
+        word_lengths[word] = len(phonemes)
         for length in range(1, len(phonemes) + 1):
             prefix = tuple(phonemes[:length])
             index.setdefault(prefix, []).append(word)
 
-    return index
+    return index, word_lengths
 
 
 # ── Scoring helpers ────────────────────────────────────────────────────────────
@@ -274,20 +277,31 @@ def _char_scores(italian: str, sorted_en: list[str]) -> dict[str, int]:
     return scores
 
 
-def _phoneme_scores(italian: str, prefix_index: dict[tuple, list[str]]) -> dict[str, int]:
-    """Phoneme prefix scores for all matching English words."""
+def _phoneme_scores(
+    italian: str,
+    prefix_index: dict[tuple, list[str]],
+    word_lengths: dict[str, int],
+) -> dict[str, float]:
+    """
+    Phoneme prefix scores weighted by coverage of the English word.
+    score = matched * WEIGHT * (matched / en_phoneme_count)
+    This penalises long English words where only a short prefix matches,
+    and rewards short words that are fully "consumed" by the Italian prefix.
+    """
     phonemes = italian_to_arpabet(italian)
     if not phonemes:
         return {}
 
-    scores: dict[str, int] = {}
+    scores: dict[str, float] = {}
 
     # Consecutive prefix matches
     for length in range(len(phonemes), 0, -1):
         prefix = tuple(phonemes[:length])
-        score = length * PHON_SCORE
         for w in prefix_index.get(prefix, []):
-            scores[w] = max(scores.get(w, 0), score)
+            en_len = word_lengths.get(w, length)
+            score = length * PHON_SCORE * (length / en_len)
+            if scores.get(w, 0) < score:
+                scores[w] = score
 
     # One-phoneme-gap matches
     for drop in range(len(phonemes)):
@@ -296,9 +310,11 @@ def _phoneme_scores(italian: str, prefix_index: dict[tuple, list[str]]) -> dict[
             continue
         for length in range(len(derived), 0, -1):
             prefix = tuple(derived[:length])
-            score = length * PHON_GAP
             for w in prefix_index.get(prefix, []):
-                scores[w] = max(scores.get(w, 0), score)
+                en_len = word_lengths.get(w, length)
+                score = length * PHON_GAP * (length / en_len)
+                if scores.get(w, 0) < score:
+                    scores[w] = score
 
     return scores
 
@@ -310,13 +326,14 @@ def get_candidates(
     sorted_en: list[str],
     rank: dict[str, int],
     prefix_index: dict[tuple, list[str]],
+    word_lengths: dict[str, int],
     n: int = 10,
 ) -> list[str]:
     """Merge character and phoneme scores; return top n English candidates."""
     char = _char_scores(italian, sorted_en)
-    phon = _phoneme_scores(italian, prefix_index)
+    phon = _phoneme_scores(italian, prefix_index, word_lengths)
 
-    combined: dict[str, int] = {}
+    combined: dict[str, float] = {}
     for w in set(char) | set(phon):
         combined[w] = max(char.get(w, 0), phon.get(w, 0))
 
@@ -340,7 +357,7 @@ def main():
     print(f"  {len(english)} words.")
 
     print("Building phoneme index …")
-    prefix_index = build_phoneme_index(english)
+    prefix_index, word_lengths = build_phoneme_index(english)
     print(f"  {len(prefix_index)} phoneme prefixes indexed.")
 
     print("Fetching Italian vocabulary …")
@@ -359,7 +376,7 @@ def main():
             continue
         seen.add(key)
 
-        cands = get_candidates(word, sorted_en, rank, prefix_index)
+        cands = get_candidates(word, sorted_en, rank, prefix_index, word_lengths)
         if cands:
             output[key] = cands
 
