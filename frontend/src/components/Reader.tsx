@@ -195,8 +195,9 @@ interface SettingsModalProps {
   selectedLangCode: string;
   selectedLangLabel: string;
   onLangChange?: (code: string) => void;
-  ttsRate: number;
-  onRateChange?: (delta: number) => void;
+  langRates: Record<string, number>;
+  onLangRateChange?: (lang: string, delta: number) => void;
+  bookLang: string;
   showFreqColors: boolean;
   onFreqColorsToggle: () => void;
   vocabTotal: number;
@@ -219,7 +220,7 @@ interface SettingsModalProps {
 const SettingsModal = memo(function SettingsModal({
   voices, voiceName, onVoiceChange,
   languages, selectedLangCode, selectedLangLabel, onLangChange,
-  ttsRate, onRateChange,
+  langRates, onLangRateChange, bookLang,
   showFreqColors, onFreqColorsToggle,
   vocabTotal, vocabCount,
   showLine0, onLine0Change, showLine1, onLine1Change, showLine2, onLine2Change,
@@ -334,59 +335,85 @@ const SettingsModal = memo(function SettingsModal({
           {/* Narration */}
           {tab === 'narration' && (
             <div className="space-y-5">
-              <div>
-                <p className="text-sm text-slate-300 mb-3">Narration speed</p>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => onRateChange?.(-0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Slow down">−</button>
-                  <span className="flex-1 text-center text-lg font-semibold text-slate-200">{ttsRate.toFixed(1)}×</span>
-                  <button onClick={() => onRateChange?.(0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Speed up">+</button>
-                </div>
-              </div>
-              {voices.length > 0 && (
-                <div>
-                  <label className="text-sm text-slate-300 block mb-2">English voice</label>
-                  <select
-                    value={voiceName}
-                    onChange={e => onVoiceChange?.(e.target.value)}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
-                  >
-                    {voices.map(v => (
-                      <option key={v.name} value={v.name}>{v.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
               {(() => {
-                // Show a voice selector for each non-English, non-Ukrainian language that has voices
                 const LANG_LABELS: Record<string, string> = {
                   it: 'Italian', de: 'German', fr: 'French', es: 'Spanish',
                   pt: 'Portuguese', la: 'Latin', el: 'Greek', nl: 'Dutch',
                   pl: 'Polish', ru: 'Russian', ar: 'Arabic', zh: 'Chinese',
                   ja: 'Japanese', ko: 'Korean',
                 };
-                const groups = Object.entries(LANG_LABELS).map(([prefix, label]) => ({
-                  prefix, label,
-                  voiceList: allVoices.filter(v => v.lang.startsWith(prefix)),
-                })).filter(g => g.voiceList.length > 0);
-                if (groups.length === 0) return null;
-                return groups.map(({ prefix, label, voiceList }) => {
+                const SpeedRow = ({ lang, label }: { lang: string; label: string }) => {
+                  const r = langRates[lang] ?? langRates['en'] ?? 0.9;
+                  return (
+                    <div>
+                      <p className="text-sm text-slate-300 mb-2">{label} speed</p>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => onLangRateChange?.(lang, -0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Slow down">−</button>
+                        <span className="flex-1 text-center text-lg font-semibold text-slate-200">{r.toFixed(1)}×</span>
+                        <button onClick={() => onLangRateChange?.(lang, 0.1)} className="w-9 h-9 bg-slate-700 hover:bg-slate-600 rounded text-xl text-slate-200 transition-colors" aria-label="Speed up">+</button>
+                      </div>
+                    </div>
+                  );
+                };
+
+                // English block: speed + voice
+                const enBlock = (
+                  <div key="en" className="space-y-3">
+                    <SpeedRow lang="en" label="English" />
+                    {voices.length > 0 && (
+                      <div>
+                        <label className="text-sm text-slate-300 block mb-2">English voice</label>
+                        <select
+                          value={voiceName}
+                          onChange={e => onVoiceChange?.(e.target.value)}
+                          className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                        >
+                          {voices.map(v => (
+                            <option key={v.name} value={v.name}>{v.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                );
+
+                // Other-language blocks: speed + voice (if system voices available)
+                const otherBlocks = Object.entries(LANG_LABELS).map(([prefix, label]) => {
+                  const voiceList = allVoices.filter(v => v.lang.startsWith(prefix));
+                  const isBookLang = bookLang === prefix;
+                  if (voiceList.length === 0 && !isBookLang) return null;
                   const defaultName = voiceList.find(v => v.name.includes('Google'))?.name ?? voiceList[0]?.name ?? '';
                   const selectedName = langVoiceNames[prefix] || defaultName;
                   return (
-                    <div key={prefix}>
-                      <label className="text-sm text-slate-300 block mb-2">{label} voice</label>
-                      <select
-                        value={selectedName}
-                        onChange={e => onLangVoiceChange?.(prefix, e.target.value)}
-                        className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
-                      >
-                        {voiceList.map(v => (
-                          <option key={v.name} value={v.name}>{v.name}</option>
-                        ))}
-                      </select>
+                    <div key={prefix} className="space-y-3">
+                      <SpeedRow lang={prefix} label={label} />
+                      {voiceList.length > 0 && (
+                        <div>
+                          <label className="text-sm text-slate-300 block mb-2">{label} voice</label>
+                          <select
+                            value={selectedName}
+                            onChange={e => onLangVoiceChange?.(prefix, e.target.value)}
+                            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                          >
+                            {voiceList.map(v => (
+                              <option key={v.name} value={v.name}>{v.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
-                });
+                }).filter(Boolean);
+
+                // Ukrainian block: speed only (eSpeak-NG, no selectable voice)
+                const ukBlock = (
+                  <div key="uk" className="space-y-1">
+                    <SpeedRow lang="uk" label="Ukrainian" />
+                    <p className="text-xs text-slate-600">Uses eSpeak-NG (no voice selector)</p>
+                  </div>
+                );
+
+                return <>{enBlock}{otherBlocks}{ukBlock}</>;
               })()}
             </div>
           )}
@@ -482,9 +509,8 @@ interface Props {
   showPhonemeHints: boolean;
   selectedVoice?: SpeechSynthesisVoice | null;
   selectedLang: LanguageOption;
-  ttsRate?: number;
-  onRateToggle?: () => void;
-  onRateChange?: (delta: number) => void;
+  langRates?: Record<string, number>;
+  onLangRateChange?: (lang: string, delta: number) => void;
   isMobile?: boolean;
   onOpenSidebar?: () => void;
   voices?: SpeechSynthesisVoice[];
@@ -516,7 +542,9 @@ function fmtTime(minutes: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, allVoices = [], langVoiceNames = {}, getVoiceForLang, onLangVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
+export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, langRates = {}, onLangRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, allVoices = [], langVoiceNames = {}, getVoiceForLang, onLangVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
+  // Rate for the book's own language — used for word-delay timing and display.
+  const ttsRate = langRates[book.language] ?? langRates['en'] ?? 0.9;
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -738,7 +766,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const translationInputRef = useRef<HTMLInputElement>(null);
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate, book.language, getVoiceForLang);
+  const { speak, speakChain, stop } = useTTS(selectedVoice, langRates, book.language, getVoiceForLang);
   const { streak, todayMinutes, totalMinutes, todayNewWords, dailyLog, trackWord } = useReadingStats();
 
   // Load progress on mount
@@ -1726,17 +1754,17 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           .catch(() => speak('Translation unavailable', { lang: 'en' }));
         return;
       }
-      // ── ↑ / ↓ ── fine-grained speed control
+      // ── ↑ / ↓ ── fine-grained speed control for current book language
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        onRateChange?.(0.1);
+        onLangRateChange?.(book.language, 0.1);
         const next = Math.round(Math.min(2.0, ttsRate + 0.1) * 10) / 10;
         showStatus(`Speed: ${next.toFixed(1)}×`);
         return;
       }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        onRateChange?.(-0.1);
+        onLangRateChange?.(book.language, -0.1);
         const next = Math.round(Math.max(0.3, ttsRate - 0.1) * 10) / 10;
         showStatus(`Speed: ${next.toFixed(1)}×`);
         return;
@@ -1766,7 +1794,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
     recallMode, recallToTranslation, recallDiff, recallHintLiterary, recallHintLiteral, recallParaTranslation, recallSentence, selectedLang.code, selectedLang.name,
     retryRecall, explainRecall, enterRecall, exitRecall, announceToNvda,
     customQuestionOpen, customAnswer, submitCustomQuestion,
-    saveProgress, book.language, ttsRate, onRateToggle, onRateChange, showStatus,
+    saveProgress, book.language, ttsRate, onLangRateChange, showStatus,
     showSettings, showKeyboardRef, playLineBell, playArchaismTone,
     toggleAutoPlay, stopAutoPlay,
   ]);
@@ -2723,8 +2751,9 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           selectedLangCode={selectedLang.code}
           selectedLangLabel={selectedLang.label}
           onLangChange={onLangChange}
-          ttsRate={ttsRate}
-          onRateChange={onRateChange}
+          langRates={langRates}
+          onLangRateChange={onLangRateChange}
+          bookLang={book.language}
           showFreqColors={showFreqColors}
           onFreqColorsToggle={handleFreqColorsToggle}
           vocabTotal={Object.keys(wordFreq).length}

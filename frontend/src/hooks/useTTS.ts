@@ -14,13 +14,6 @@ interface ChainItem {
   rate?: number;
 }
 
-// Per-language calibration: the Google Italian voice speaks significantly faster
-// than English/Ukrainian at the same rate value, so scale it down to match.
-const LANG_RATE_SCALE: Partial<Record<string, number>> = {
-  it: 0.75,
-  uk: 1.25,
-};
-
 type VoiceResolver = (lang: string) => SpeechSynthesisVoice | null;
 
 // Fallback auto-picker used when no resolver is provided.
@@ -32,7 +25,7 @@ function pickVoice(langPrefix: string): SpeechSynthesisVoice | null {
 
 export function useTTS(
   voice?: SpeechSynthesisVoice | null,
-  rate = 0.9,
+  langRates: Record<string, number> = {},
   defaultLang = 'en',
   getVoiceForLang?: VoiceResolver,
 ) {
@@ -46,6 +39,10 @@ export function useTTS(
     return getVoiceForLang ? getVoiceForLang(langPrefix) : pickVoice(langPrefix);
   }, [voice, getVoiceForLang]);
 
+  const getRate = useCallback((langPrefix: string): number => {
+    return langRates[langPrefix] ?? langRates['en'] ?? 0.9;
+  }, [langRates]);
+
   const speak = useCallback((text: string, options?: SpeakOptions) => {
     window.speechSynthesis.cancel();
     stopUkrainian();
@@ -55,12 +52,12 @@ export function useTTS(
 
     // Always use eSpeak-NG WASM for Ukrainian — Windows native voices are absent or incorrect.
     if (langPrefix === 'uk') {
-      void speakUkrainian(text, (options?.rate ?? rate) * (LANG_RATE_SCALE['uk'] ?? 1));
+      void speakUkrainian(text, options?.rate ?? getRate('uk'));
       return;
     }
 
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = (options?.rate ?? rate) * (LANG_RATE_SCALE[langPrefix] ?? 1);
+    u.rate = options?.rate ?? getRate(langPrefix);
     u.pitch = options?.pitch ?? 1;
 
     const match = resolveVoice(langPrefix);
@@ -72,7 +69,7 @@ export function useTTS(
 
     if (options?.onend) u.onend = () => options.onend!();
     window.speechSynthesis.speak(u);
-  }, [resolveVoice, voice, rate, defaultLang]);
+  }, [resolveVoice, getRate, voice, defaultLang]);
 
   // Speak multiple texts in sequence, waiting for each to finish before starting the next.
   const speakChain = useCallback((items: ChainItem[]) => {
@@ -84,12 +81,12 @@ export function useTTS(
       const u = new SpeechSynthesisUtterance(item.text);
       if (item.lang) {
         const langPrefix = item.lang.split('-')[0];
-        u.rate = (item.rate ?? rate) * (LANG_RATE_SCALE[langPrefix] ?? 1);
+        u.rate = item.rate ?? getRate(langPrefix);
         const match = resolveVoice(langPrefix);
         if (match) { u.voice = match; u.lang = match.lang; }
         else u.lang = item.lang;
       } else {
-        u.rate = item.rate ?? rate;
+        u.rate = item.rate ?? getRate('en');
         if (voice) { u.voice = voice; u.lang = voice.lang; }
         else u.lang = 'en-GB';
       }
@@ -98,7 +95,7 @@ export function useTTS(
       window.speechSynthesis.speak(u);
     };
     go(0);
-  }, [resolveVoice, voice, rate]);
+  }, [resolveVoice, getRate, voice]);
 
   const stop = useCallback(() => {
     window.speechSynthesis.cancel();

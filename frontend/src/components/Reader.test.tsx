@@ -79,7 +79,7 @@ async function renderReader() {
       showPhonemeHints={false}
       selectedVoice={null}
       selectedLang={LANG}
-      ttsRate={1}
+      langRates={{ en: 1 }}
     />
   );
 
@@ -122,7 +122,7 @@ describe('Reader — r key opens recall panel', () => {
         showPhonemeHints={false}
         selectedVoice={null}
         selectedLang={LANG}
-        ttsRate={1}
+        langRates={{ en: 1 }}
       />
     );
 
@@ -146,7 +146,7 @@ describe('Reader — r key opens recall panel', () => {
         showPhonemeHints={false}
         selectedVoice={null}
         selectedLang={LANG}
-        ttsRate={1}
+        langRates={{ en: 1 }}
       />
     );
 
@@ -212,7 +212,7 @@ async function renderItalianReader() {
       showPhonemeHints={false}
       selectedVoice={null}
       selectedLang={LANG}
-      ttsRate={1}
+      langRates={{ en: 1 }}
     />
   );
   await waitFor(() => expect(screen.queryByText('Loading...')).toBeNull(), { timeout: 3000 });
@@ -249,7 +249,7 @@ describe('Reader — Italian gloss (4/5/6 keys)', () => {
         showPhonemeHints={false}
         selectedVoice={null}
         selectedLang={LANG}
-        ttsRate={1}
+        langRates={{ en: 1 }}
       />
     );
     await waitFor(() => expect(screen.queryByText('Loading...')).toBeNull());

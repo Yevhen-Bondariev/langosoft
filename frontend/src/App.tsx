@@ -23,7 +23,15 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPhonemeHints, setShowPhonemeHints] = useState(false);
-  const [ttsRate, setTtsRate] = useState(() => parseFloat(localStorage.getItem('tts-rate') ?? '0.9'));
+  const [langRates, setLangRates] = useState<Record<string, number>>(() => {
+    try {
+      const stored = localStorage.getItem('tts-rates-v2');
+      if (stored) return JSON.parse(stored) as Record<string, number>;
+    } catch { /* ignore */ }
+    // Migrate from old global rate; fold in previous per-language calibration as defaults.
+    const g = parseFloat(localStorage.getItem('tts-rate') ?? '0.9');
+    return { en: g, it: Math.round(g * 0.75 * 10) / 10, uk: Math.round(g * 1.25 * 10) / 10 };
+  });
   const [theme, setTheme] = useState(() => localStorage.getItem('langosoft-theme') ?? 'dark');
   const { voices, selectedVoice, selectedVoiceName, setVoice, allVoices, langVoiceNames, getVoiceForLang, setVoiceForLang } = useVoicePreference();
   const { languages, selectedLang, setLanguage } = useLanguagePreference();
@@ -39,19 +47,13 @@ export default function App() {
     localStorage.setItem('langosoft-theme', theme);
   }, [theme]);
 
-  const changeRate = useCallback((delta: number) => {
-    setTtsRate(prev => {
-      const next = Math.round(Math.min(2.0, Math.max(0.3, prev + delta)) * 10) / 10;
-      localStorage.setItem('tts-rate', String(next));
-      return next;
-    });
-  }, []);
-
-  const toggleRate = useCallback(() => {
-    setTtsRate(prev => {
-      const next = prev === 1.5 ? 1.0 : 1.5;
-      localStorage.setItem('tts-rate', String(next));
-      return next;
+  const changeLangRate = useCallback((lang: string, delta: number) => {
+    setLangRates(prev => {
+      const cur = prev[lang] ?? prev['en'] ?? 0.9;
+      const next = Math.round(Math.min(2.0, Math.max(0.3, cur + delta)) * 10) / 10;
+      const updated = { ...prev, [lang]: next };
+      localStorage.setItem('tts-rates-v2', JSON.stringify(updated));
+      return updated;
     });
   }, []);
 
@@ -332,9 +334,8 @@ export default function App() {
             showPhonemeHints={showPhonemeHints}
             selectedVoice={selectedVoice}
             selectedLang={selectedLang}
-            ttsRate={ttsRate}
-            onRateToggle={toggleRate}
-            onRateChange={changeRate}
+            langRates={langRates}
+            onLangRateChange={changeLangRate}
             isMobile={isMobile}
             onOpenSidebar={() => setSidebarOpen(true)}
             voices={voices}
