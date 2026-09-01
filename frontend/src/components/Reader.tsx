@@ -766,8 +766,18 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const translationInputRef = useRef<HTMLInputElement>(null);
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { speak, speakChain, stop } = useTTS(selectedVoice, langRates, book.language, getVoiceForLang);
-  const { streak, todayMinutes, totalMinutes, todayNewWords, dailyLog, trackWord } = useReadingStats();
+  const { speak: speakRaw, speakChain: speakChainRaw, stop } = useTTS(selectedVoice, langRates, book.language, getVoiceForLang);
+  const { streak, todayMinutes, totalMinutes, todayNewWords, dailyLog, trackWord, onSpeak } = useReadingStats();
+
+  // Wrap speak so every TTS call notifies the reading-time tracker.
+  const speak = useCallback((text: string, opts?: Parameters<typeof speakRaw>[1]) => {
+    onSpeak();
+    speakRaw(text, opts);
+  }, [speakRaw, onSpeak]);
+  const speakChain = useCallback((items: Parameters<typeof speakChainRaw>[0]) => {
+    onSpeak();
+    speakChainRaw(items);
+  }, [speakChainRaw, onSpeak]);
 
   // Load progress on mount
   useEffect(() => {
@@ -1243,6 +1253,12 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     })();
     const literalLine = literalLines[lineIndex]?.trim() ?? '';
 
+    // Track words in the Italian line for new-word counting
+    if (book.language !== 'en') {
+      const lineWords = (line || para.text).match(/[\p{L}'\-]+/gu) ?? [];
+      lineWords.forEach(w => trackWord(book.id, w));
+    }
+
     const advance = () => {
       if (!isAutoPlayingRef.current) return;
       const paras2 = paragraphsRef.current;
@@ -1260,7 +1276,11 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
           saveProgress(chapterNum, pIdx2, nextWordIdx);
         } else {
           const nextPIdx = pIdx2 + 1;
-          if (nextPIdx >= paras2.length) { isAutoPlayingRef.current = false; setIsAutoPlaying(false); return; }
+          if (nextPIdx >= paras2.length) {
+            isAutoPlayingRef.current = false; setIsAutoPlaying(false);
+            goToChapter(chapterNum + 1);
+            return;
+          }
           currentParagraphIndexRef.current = nextPIdx;
           currentWordIndexRef.current = 0;
           setCurrentParagraphIndex(nextPIdx);
@@ -1270,7 +1290,11 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
         }
       } else {
         const nextPIdx = pIdx2 + 1;
-        if (nextPIdx >= paras2.length) { isAutoPlayingRef.current = false; setIsAutoPlaying(false); return; }
+        if (nextPIdx >= paras2.length) {
+          isAutoPlayingRef.current = false; setIsAutoPlaying(false);
+          goToChapter(chapterNum + 1);
+          return;
+        }
         currentParagraphIndexRef.current = nextPIdx;
         currentWordIndexRef.current = 0;
         setCurrentParagraphIndex(nextPIdx);
@@ -1288,7 +1312,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     } else {
       speakOriginal();
     }
-  }, [speak, saveProgress, chapterNum]);
+  }, [speak, saveProgress, chapterNum, goToChapter, trackWord, book.id, book.language]);
 
   // Keep autoPlayTickRef pointing at the latest closure every render
   useEffect(() => { autoPlayTickRef.current = autoPlayTick; });

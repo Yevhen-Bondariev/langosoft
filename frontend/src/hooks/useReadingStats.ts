@@ -74,9 +74,14 @@ export function useReadingStats() {
     });
   }, []);
 
-  // Minute tick — increment time every 60 s
+  // Track last time TTS fired — only count minutes when the user was listening.
+  const lastSpeakRef = useRef(0);
+  const onSpeak = useCallback(() => { lastSpeakRef.current = Date.now(); }, []);
+
+  // Minute tick — only increments if TTS was active within the past 90 s.
   useEffect(() => {
     const id = setInterval(() => {
+      if (Date.now() - lastSpeakRef.current > 90_000) return;
       const t = todayStr();
       setStats(prev => {
         const daily = { ...prev.dailyLog };
@@ -132,5 +137,6 @@ export function useReadingStats() {
     todayNewWords: todayEntry.newWords,
     dailyLog: stats.dailyLog,
     trackWord,
+    onSpeak,
   };
 }
