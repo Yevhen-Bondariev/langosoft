@@ -1059,15 +1059,22 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     setCustomAnswer(null);
     setRecallHintLiterary('');
     setRecallHintLiteral('');
+    const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex);
+    // Literary translation for the line
     const fullTrans = para.refinedText || para.longfellowText || para.deeplText || '';
     let lineTrans = fullTrans;
     if (fullTrans && para.text.includes('\n')) {
-      const { lineIndex } = lineIndexAtWord(para.text, currentWordIndex);
       const transLines = fullTrans.split('\n').filter(l => l.trim());
       if (transLines[lineIndex]) lineTrans = transLines[lineIndex].trim();
     }
     setRecallParaTranslation(lineTrans);
-    // Build word-by-word gloss for this line (the "2nd line" in the display)
+    // Literal translation from stored lineTransJson — same source as the Literal tab
+    const literalLines: string[] = (() => {
+      try { return para.lineTransJson ? JSON.parse(para.lineTransJson) : []; }
+      catch { return []; }
+    })();
+    setRecallHintLiteral(literalLines[lineIndex]?.trim() || '');
+    // Build word-by-word gloss for this line (fallback only)
     const sentenceTokens = tokenizeParagraph(sentence);
     const glossMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
     const glossLine = getWordTokens(sentenceTokens)
@@ -1078,25 +1085,23 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     setRecallToTranslation(true);
     setRecallMode(true);
     setTimeout(() => recallTextareaRef.current?.focus(), 50);
+    // Fetch only the literary hint from API (literal comes from lineTransJson above)
     setRecallHintLoading(true);
     const lineCacheKey = `${sentence}::${selectedLang.name}`;
     const cachedLiterary = lineLiteraryCache.current.get(lineCacheKey);
-    Promise.all([
-      cachedLiterary !== undefined
-        ? Promise.resolve(cachedLiterary)
-        : api.words.translateParagraph(sentence, selectedLang.name, book.language, false).then(r => r.translation),
-      api.words.translateParagraph(sentence, selectedLang.name, book.language, true),
-    ]).then(([literary, litrl]) => {
+    (cachedLiterary !== undefined
+      ? Promise.resolve(cachedLiterary)
+      : api.words.translateParagraph(sentence, selectedLang.name, book.language, false).then(r => r.translation)
+    ).then(literary => {
       lineLiteraryCache.current.set(lineCacheKey, literary);
       setRecallHintLiterary(literary);
-      setRecallHintLiteral(litrl.translation);
     }).catch(() => {}).finally(() => setRecallHintLoading(false));
   }, [paragraphs, currentParagraphIndex, currentWordIndex, selectedLang.name, book.language]);
 
   const submitRecall = useCallback(() => {
     if (!recallInput.trim()) return;
     const target = recallToTranslation
-      ? (recallGlossLine || recallParaTranslation)
+      ? (recallHintLiteral || recallGlossLine || recallParaTranslation)
       : recallSentence;
     if (!target) return;
     const diff = wordDiff(target, recallInput);
@@ -1107,7 +1112,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     } else {
       playFailure();
     }
-  }, [recallGlossLine, recallParaTranslation, recallInput, recallToTranslation, recallSentence]);
+  }, [recallHintLiteral, recallGlossLine, recallParaTranslation, recallInput, recallToTranslation, recallSentence]);
 
   const retryRecall = useCallback(() => {
     setRecallDiff(null);
@@ -2305,9 +2310,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
                   <p style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
                     Literal translation — type the Italian
                   </p>
-                  {recallHintLoading ? (
-                    <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>Loading…</p>
-                  ) : recallHintLiteral ? (
+                  {recallHintLiteral ? (
                     <p style={{ color: '#7dd3fc', fontSize: '1.1rem', lineHeight: 1.7 }}>{recallHintLiteral}</p>
                   ) : recallGlossLine ? (
                     <p style={{ color: '#7dd3fc', fontSize: '1.1rem', lineHeight: 1.7 }}>{recallGlossLine}</p>
