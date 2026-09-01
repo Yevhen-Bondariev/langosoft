@@ -22,13 +22,15 @@ interface StoredStats {
   longestStreak: number;
   lastReadDate: string;
   totalMinutes: number;
+  goalMinutes: number;
   dailyLog: Record<string, DailyEntry>;
   seenWords: Record<number, string[]>; // bookId → normalized word list
 }
 
 const DEFAULT: StoredStats = {
   streak: 0, longestStreak: 0, lastReadDate: '',
-  totalMinutes: 0, dailyLog: {}, seenWords: {},
+  totalMinutes: 0, goalMinutes: 15,
+  dailyLog: {}, seenWords: {},
 };
 
 function loadStats(): StoredStats {
@@ -78,10 +80,10 @@ export function useReadingStats() {
   const lastSpeakRef = useRef(0);
   const onSpeak = useCallback(() => { lastSpeakRef.current = Date.now(); }, []);
 
-  // Minute tick — only increments if TTS was active within the past 90 s.
+  // Minute tick — only increments if TTS was active within the past 5 s.
   useEffect(() => {
     const id = setInterval(() => {
-      if (Date.now() - lastSpeakRef.current > 90_000) return;
+      if (Date.now() - lastSpeakRef.current > 5_000) return;
       const t = todayStr();
       setStats(prev => {
         const daily = { ...prev.dailyLog };
@@ -95,6 +97,14 @@ export function useReadingStats() {
       });
     }, 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  const setGoalMinutes = useCallback((goal: number) => {
+    setStats(prev => {
+      const updated = { ...prev, goalMinutes: Math.max(5, Math.min(120, goal)) };
+      saveStats(updated);
+      return updated;
+    });
   }, []);
 
   /** Call when the user navigates to a word. Returns true if it's a new word (never seen before). */
@@ -134,9 +144,11 @@ export function useReadingStats() {
     longestStreak: stats.longestStreak,
     todayMinutes: todayEntry.minutes,
     totalMinutes: stats.totalMinutes,
+    goalMinutes: stats.goalMinutes,
     todayNewWords: todayEntry.newWords,
     dailyLog: stats.dailyLog,
     trackWord,
+    setGoalMinutes,
     onSpeak,
   };
 }

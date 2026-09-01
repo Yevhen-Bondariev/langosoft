@@ -3,6 +3,8 @@ import type { DailyEntry } from '../hooks/useReadingStats';
 
 interface Props {
   dailyLog: Record<string, DailyEntry>;
+  goalMinutes: number;
+  onGoalChange: (goal: number) => void;
   onClose: () => void;
 }
 
@@ -14,7 +16,7 @@ function dayColor(minutes: number): string {
   return 'bg-emerald-400';
 }
 
-export function HeatmapModal({ dailyLog, onClose }: Props) {
+export function HeatmapModal({ dailyLog, goalMinutes, onGoalChange, onClose }: Props) {
   const [tooltip, setTooltip] = useState<{ date: string; entry: DailyEntry } | null>(null);
 
   // Build 52-week × 7-day grid ending today
@@ -68,6 +70,14 @@ export function HeatmapModal({ dailyLog, onClose }: Props) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold text-amber-400">Reading Heatmap</h2>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200 text-lg">✕</button>
+        </div>
+
+        {/* Daily goal */}
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-xs text-slate-400">Daily goal</span>
+          <button onClick={() => onGoalChange(goalMinutes - 5)} className="w-7 h-7 bg-slate-700 hover:bg-slate-600 rounded text-slate-200 text-base leading-none transition-colors">−</button>
+          <span className="text-sm font-semibold text-slate-200 w-12 text-center">{goalMinutes} min</span>
+          <button onClick={() => onGoalChange(goalMinutes + 5)} className="w-7 h-7 bg-slate-700 hover:bg-slate-600 rounded text-slate-200 text-base leading-none transition-colors">+</button>
         </div>
 
         <div className="overflow-x-auto">

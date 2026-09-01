@@ -535,12 +535,6 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
-function fmtTime(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
 
 export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, langRates = {}, onLangRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, allVoices = [], langVoiceNames = {}, getVoiceForLang, onLangVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
   // Rate for the book's own language — used for word-delay timing and display.
@@ -767,7 +761,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { speak: speakRaw, speakChain: speakChainRaw, stop } = useTTS(selectedVoice, langRates, book.language, getVoiceForLang);
-  const { streak, todayMinutes, totalMinutes, todayNewWords, dailyLog, trackWord, onSpeak } = useReadingStats();
+  const { streak, todayMinutes, goalMinutes, todayNewWords, dailyLog, trackWord, setGoalMinutes, onSpeak } = useReadingStats();
 
   // Wrap speak so every TTS call notifies the reading-time tracker.
   const speak = useCallback((text: string, opts?: Parameters<typeof speakRaw>[1]) => {
@@ -2339,10 +2333,11 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           )}
           <button
             onClick={() => setShowHeatmap(true)}
-            title="Reading time — click to see heatmap"
-            className="hover:text-slate-300 transition-colors"
+            title="Reading time — click to set goal / see heatmap"
+            className={`transition-colors ${todayMinutes >= goalMinutes ? 'text-emerald-400 hover:text-emerald-300' : 'hover:text-slate-300'}`}
           >
-            ⏱ {fmtTime(todayMinutes)} / {fmtTime(totalMinutes)}
+            ⏱ {todayMinutes}/{goalMinutes}m
+            {todayMinutes >= goalMinutes && ' ✓'}
           </button>
         </div>
       )}
@@ -3013,7 +3008,7 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
       )}
 
       {showHeatmap && (
-        <HeatmapModal dailyLog={dailyLog} onClose={() => setShowHeatmap(false)} />
+        <HeatmapModal dailyLog={dailyLog} goalMinutes={goalMinutes} onGoalChange={setGoalMinutes} onClose={() => setShowHeatmap(false)} />
       )}
       {cantoComplete && (
         <CantoComplete
