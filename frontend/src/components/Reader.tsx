@@ -12,6 +12,9 @@ import { useSwipeGesture } from '../hooks/useSwipeGesture';
 import { useLongPress } from '../hooks/useLongPress';
 import { MobileActionBar } from './MobileActionBar';
 import { VocabChartModal } from './VocabChart';
+import { useReadingStats } from '../hooks/useReadingStats';
+import { HeatmapModal } from './HeatmapModal';
+import { CantoComplete } from './CantoComplete';
 
 // Normalize a word for gloss cache lookup: lowercase + strip diacritics + strip apostrophes.
 // Groq strips accents (più→piu, è→e) and apostrophes (v'intrai→vintrai, com'→com),
@@ -506,6 +509,13 @@ interface AddFlashcardState {
   chapterNumber: number;
 }
 
+function fmtTime(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 export default function Reader({ book, chapters, chapterNum, onChapterChange, onFlashcardsChange, categories, onCategoriesChange, showPhonemeHints, selectedVoice, selectedLang, ttsRate = 0.9, onRateToggle, onRateChange, isMobile = false, onOpenSidebar, voices = [], voiceName = '', onVoiceChange, allVoices = [], langVoiceNames = {}, getVoiceForLang, onLangVoiceChange, languages = [], onLangChange, onPhonemeToggle: _onPhonemeToggle, theme, onThemeChange }: Props) {
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
@@ -555,6 +565,8 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const [showSettings, setShowSettings] = useState(false);
   const [showKeyboardRef, setShowKeyboardRef] = useState(false);
   const [showVocabChart, setShowVocabChart] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [cantoComplete, setCantoComplete] = useState<{ title: string; newWords: number } | null>(null);
   const [showLine0, setShowLine0] = useState(() => localStorage.getItem('show-line0') !== 'false');
   const [showLine1, setShowLine1] = useState(() => localStorage.getItem('show-line1') !== 'false');
   const [showLine2, setShowLine2] = useState(() => localStorage.getItem('show-line2') !== 'false');
@@ -727,6 +739,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   const currentParaRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { speak, speakChain, stop } = useTTS(selectedVoice, ttsRate, book.language, getVoiceForLang);
+  const { streak, todayMinutes, totalMinutes, todayNewWords, dailyLog, trackWord } = useReadingStats();
 
   // Load progress on mount
   useEffect(() => {
@@ -964,13 +977,19 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
   }, [book.id]);
 
   const goToChapter = useCallback((num: number) => {
+    if (num > chapterNum && num <= totalChapters - 1) {
+      // Completing the current chapter — show celebration
+      const completedTitle = chapters.find(c => c.number === chapterNum)?.title ?? `Chapter ${chapterNum + 1}`;
+      setCantoComplete({ title: completedTitle, newWords: todayNewWords });
+      playSuccess();
+    }
     const clamped = Math.max(0, Math.min(num, totalChapters - 1));
     onChapterChange(clamped);
     setCurrentParagraphIndex(0);
     setCurrentWordIndex(0);
     saveProgress(clamped, 0, 0);
     stop();
-  }, [totalChapters, onChapterChange, saveProgress, stop]);
+  }, [chapterNum, chapters, todayNewWords, totalChapters, onChapterChange, saveProgress, stop]);
 
   const goToParagraph = useCallback((idx: number, autoSpeak = false) => {
     const clamped = Math.max(0, Math.min(idx, paragraphs.length - 1));
@@ -991,6 +1010,9 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
     setCurrentWordIndex(clamped);
     const token = wordTokens[clamped];
     const word = token?.rawWord || token?.text || '';
+    if (book.language !== 'en' && token) {
+      trackWord(book.id, token.rawWord || token.text);
+    }
     if (word) {
       const cacheMap = glossWordCache.current.get(`${currentParagraphIndex}::en`);
       const tr = resolveGloss(word, cacheMap, staticGlossRef.current);
@@ -1010,7 +1032,7 @@ export default function Reader({ book, chapters, chapterNum, onChapterChange, on
       }
     }
     saveProgress(chapterNum, currentParagraphIndex, clamped);
-  }, [wordTokens, speak, ttsRate, chapterNum, currentParagraphIndex, saveProgress, showPhonemeHints, playArchaismTone]);
+  }, [wordTokens, trackWord, book.id, book.language, speak, ttsRate, chapterNum, currentParagraphIndex, saveProgress, showPhonemeHints, playArchaismTone]);
 
   const analyzeGrammar = useCallback(async () => {
     // Toggle off if already showing for this paragraph
@@ -2254,6 +2276,25 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
         {statusMsg && <span className="text-amber-400 font-medium ml-auto" aria-live="polite" aria-atomic="true">{statusMsg}</span>}
       </div>
 
+      {/* Gamification stats row */}
+      {book.language !== 'en' && (streak > 0 || todayNewWords > 0 || todayMinutes > 0) && (
+        <div className="px-4 py-1 bg-slate-950 shrink-0 flex items-center gap-3 text-xs text-slate-500 border-t border-slate-900">
+          {streak > 0 && (
+            <span title={`${streak} day streak`}>🔥 {streak}</span>
+          )}
+          {todayNewWords > 0 && (
+            <span title="New Italian words seen today">📖 {todayNewWords} new</span>
+          )}
+          <button
+            onClick={() => setShowHeatmap(true)}
+            title="Reading time — click to see heatmap"
+            className="hover:text-slate-300 transition-colors"
+          >
+            ⏱ {fmtTime(todayMinutes)} / {fmtTime(totalMinutes)}
+          </button>
+        </div>
+      )}
+
       {/* Inline line toggles */}
       <div className="flex items-center gap-1.5 px-4 py-1 bg-slate-950 border-b border-slate-800 shrink-0">
         <button
@@ -2915,6 +2956,17 @@ const openAddFlashcard = useCallback((wordIdx?: number) => {
           totalVocab={Object.keys(wordFreq).length}
           currentChapterNum={chapterNum}
           onClose={() => setShowVocabChart(false)}
+        />
+      )}
+
+      {showHeatmap && (
+        <HeatmapModal dailyLog={dailyLog} onClose={() => setShowHeatmap(false)} />
+      )}
+      {cantoComplete && (
+        <CantoComplete
+          cantoTitle={cantoComplete.title}
+          newWords={cantoComplete.newWords}
+          onClose={() => setCantoComplete(null)}
         />
       )}
 

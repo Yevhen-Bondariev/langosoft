@@ -221,3 +221,8 @@ body {
 [data-theme="light"] .bg-red-900\/40  { background-color: rgb(127 29 29 / 0.1); }
 [data-theme="light"] .hover\:bg-red-900\/60:hover { background-color: rgb(127 29 29 / 0.18); }
 [data-theme="light"] .border-red-800\/50 { border-color: rgb(153 27 27 / 0.4); }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
